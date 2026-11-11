@@ -29,7 +29,7 @@ const getMemberPerformance = async (req, res) => {
         // Authorization check
         const requestingUser = req.user;
         const isSelf = String(requestingUser.id) === String(userId);
-        const isManagerOrAdmin = ['Project Manager', 'Executive Manager', 'System Administrator']
+        const isManagerOrAdmin = ['Project Manager', 'Executive Manager', 'System Administrator', 'Task Manager']
             .includes(requestingUser.role);
 
         if (!isSelf && !isManagerOrAdmin) {
@@ -267,7 +267,7 @@ const getTeamPerformance = async (req, res) => {
         const requestingUser = req.user;
 
         // Only managers and admins can view team performance
-        if (!['Project Manager', 'Executive Manager', 'System Administrator'].includes(requestingUser.role)) {
+        if (!['Project Manager', 'Executive Manager', 'System Administrator', 'Task Manager'].includes(requestingUser.role)) {
             return res.status(403).json({
                 success: false,
                 message: "Only managers and administrators can view team performance."
@@ -314,7 +314,7 @@ const getTeamPerformance = async (req, res) => {
                 
             FROM users u
             LEFT JOIN tasks t ON t.assignee_id = u.id
-            WHERE u.role = 'Member' AND u.is_active = TRUE
+            WHERE u.role IN ('Member', 'Worker') AND u.is_active = TRUE
         `;
 
         const params = [];
@@ -408,7 +408,7 @@ const getPerformanceTrends = async (req, res) => {
 
         const requestingUser = req.user;
         const isSelf = String(requestingUser.id) === String(userId);
-        const isManagerOrAdmin = ['Project Manager', 'Executive Manager', 'System Administrator']
+        const isManagerOrAdmin = ['Project Manager', 'Executive Manager', 'System Administrator', 'Task Manager']
             .includes(requestingUser.role);
 
         if (!isSelf && !isManagerOrAdmin) {
@@ -494,7 +494,7 @@ const createPerformanceSnapshot = async (req, res) => {
                 )
             FROM users u
             LEFT JOIN tasks t ON t.assignee_id = u.id
-            WHERE u.role = 'Member' AND u.is_active = TRUE
+            WHERE u.role IN ('Member', 'Worker') AND u.is_active = TRUE
             GROUP BY u.id
             ON CONFLICT (user_id, snapshot_date) 
             DO UPDATE SET
@@ -642,7 +642,7 @@ const getAllMembersPerformance = async (req, res) => {
         const requestingUser = req.user;
 
         if (
-            !["Project Manager", "Executive Manager", "System Administrator"].includes(
+            !["Project Manager", "Executive Manager", "System Administrator", "Task Manager"].includes(
                 requestingUser.role
             )
         ) {
@@ -702,7 +702,7 @@ const getAllMembersPerformance = async (req, res) => {
                 )::NUMERIC AS avg_completion_days
             FROM tasks t
             LEFT JOIN users u ON t.assignee_id = u.id
-            WHERE u.role = 'Member'
+            WHERE u.role IN ('Member', 'Worker')
             ${scopeClause}
             `,
             scopeParams
@@ -714,7 +714,7 @@ const getAllMembersPerformance = async (req, res) => {
             SELECT t.status, COUNT(*)::INTEGER AS count
             FROM tasks t
             JOIN users u ON t.assignee_id = u.id
-            WHERE u.role = 'Member'
+            WHERE u.role IN ('Member', 'Worker')
             ${scopeClause}
             GROUP BY t.status
             `,
@@ -727,7 +727,7 @@ const getAllMembersPerformance = async (req, res) => {
             SELECT t.priority, COUNT(*)::INTEGER AS count
             FROM tasks t
             JOIN users u ON t.assignee_id = u.id
-            WHERE u.role = 'Member'
+            WHERE u.role IN ('Member', 'Worker')
             ${scopeClause}
             GROUP BY t.priority
             `,
@@ -748,7 +748,7 @@ const getAllMembersPerformance = async (req, res) => {
             FROM tasks t
             JOIN users u ON t.assignee_id = u.id
             JOIN projects p ON t.project_id = p.id
-            WHERE u.role = 'Member'
+            WHERE u.role IN ('Member', 'Worker')
             ${scopeClause}
             GROUP BY p.id, p.name
             ORDER BY total_tasks DESC
@@ -796,7 +796,7 @@ const getMembersList = async (req, res) => {
         const requestingUser = req.user;
 
         if (
-            !["Project Manager", "Executive Manager", "System Administrator"].includes(
+            !["Project Manager", "Executive Manager", "System Administrator", "Task Manager"].includes(
                 requestingUser.role
             )
         ) {
@@ -808,9 +808,9 @@ const getMembersList = async (req, res) => {
 
         const result = await safeQuery(
             `
-            SELECT id, full_name, email
+            SELECT id, full_name, email, role
             FROM users
-            WHERE role = 'Member' AND is_active = TRUE
+            WHERE role IN ('Member', 'Worker') AND is_active = TRUE
             ORDER BY full_name ASC
             `
         );
@@ -841,7 +841,7 @@ const getAllProjectsOverview = async (req, res) => {
         const requestingUser = req.user;
 
         if (
-            !["Project Manager", "Executive Manager", "System Administrator"].includes(
+            !["Project Manager", "Executive Manager", "System Administrator", "Task Manager"].includes(
                 requestingUser.role
             )
         ) {

@@ -28,7 +28,9 @@ const ROLES = [
   "System Administrator",
   "Executive Manager",
   "Project Manager",
+  "Task Manager",
   "Member",
+  "Worker",
 ];
 
 function getToken() {

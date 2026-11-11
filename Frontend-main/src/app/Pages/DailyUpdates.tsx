@@ -72,7 +72,7 @@ export default function DailyUpdates() {
   const [dateFilter, setDateFilter] = useState("");
   const [userFilter, setUserFilter] = useState("all");
   
-  const isManager = user?.role === "Project Manager" || user?.role?.includes("Admin");
+  const isManager = user?.role === "Project Manager" || user?.role === "Task Manager" || user?.role === "Executive Manager" || user?.role?.includes("Admin");
 
   useEffect(() => {
     if (!authLoading && !user) {

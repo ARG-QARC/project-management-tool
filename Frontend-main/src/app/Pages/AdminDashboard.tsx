@@ -764,7 +764,9 @@ export default function AdminDashboard() {
                 className="text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none"
               >
                 <option value="all">All Roles</option>
+                <option value="Worker">Worker</option>
                 <option value="Member">Member</option>
+                <option value="Task Manager">Task Manager</option>
                 <option value="Project Manager">Project Manager</option>
                 <option value="Executive Manager">Executive Manager</option>
                 <option value="System Administrator">System Administrator</option>
@@ -814,8 +816,10 @@ export default function AdminDashboard() {
                       <td className="py-3 px-4">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
                           u.role === "Project Manager" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                          u.role === "Task Manager" ? "bg-cyan-50 text-cyan-700 border-cyan-200" :
                           u.role === "Executive Manager" ? "bg-purple-50 text-purple-700 border-purple-200" :
                           u.role === "System Administrator" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                          u.role === "Worker" ? "bg-amber-50 text-amber-700 border-amber-200" :
                           "bg-slate-100 text-slate-700 border-slate-200"
                         }`}>
                           {u.role}
@@ -1082,7 +1086,9 @@ export default function AdminDashboard() {
                     onChange={e => setUserForm({ ...userForm, role: e.target.value })}
                     className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:border-indigo-500 bg-white"
                   >
+                    <option value="Worker">Worker</option>
                     <option value="Member">Member</option>
+                    <option value="Task Manager">Task Manager</option>
                     <option value="Project Manager">Project Manager</option>
                     <option value="Executive Manager">Executive Manager</option>
                     <option value="System Administrator">System Administrator</option>

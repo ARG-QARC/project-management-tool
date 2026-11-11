@@ -36,7 +36,9 @@ const ALLOWED_ROLES = [
   "System Administrator",
   "Executive Manager",
   "Project Manager",
+  "Task Manager",
   "Member",
+  "Worker",
 ];
 
 /* =========================================================
@@ -649,7 +651,9 @@ const getUserStats = async (req, res) => {
         COUNT(CASE WHEN role = 'System Administrator' THEN 1 END) as system_admins,
         COUNT(CASE WHEN role = 'Executive Manager' THEN 1 END) as executive_managers,
         COUNT(CASE WHEN role = 'Project Manager' THEN 1 END) as project_managers,
-        COUNT(CASE WHEN role = 'Member' THEN 1 END) as members
+        COUNT(CASE WHEN role = 'Task Manager' THEN 1 END) as task_managers,
+        COUNT(CASE WHEN role = 'Member' THEN 1 END) as members,
+        COUNT(CASE WHEN role = 'Worker' THEN 1 END) as workers
       FROM users
     `);
 

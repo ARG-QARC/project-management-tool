@@ -19,6 +19,7 @@ const MANAGEMENT_ROLES = [
     "System Administrator",
     "Executive Manager",
     "Project Manager",
+    "Task Manager",
 ];
 
 

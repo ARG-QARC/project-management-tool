@@ -1,5 +1,12 @@
 const pool = require("../config/db");
 
+const isManagementRole = (role) => [
+  "Project Manager",
+  "Executive Manager",
+  "System Administrator",
+  "Task Manager"
+].includes(role);
+
 // Get all daily updates (Managers)
 const getAllUpdates = async (req, res) => {
   try {
@@ -37,7 +44,7 @@ const getUserUpdates = async (req, res) => {
   try {
     const userId = req.params.userId;
     // Users can only view their own updates, managers can view any.
-    if (req.user.role !== "Project Manager" && req.user.id !== userId) {
+    if (!isManagementRole(req.user.role) && req.user.id !== userId) {
       return res.status(403).json({ error: "Unauthorized to view these updates" });
     }
 
@@ -100,7 +107,7 @@ const updateUpdate = async (req, res) => {
     const updateRecord = checkResult.rows[0];
 
     // Only owner can update content, managers can update KPI
-    if (req.user.role !== "Project Manager" && req.user.id !== updateRecord.user_id) {
+    if (!isManagementRole(req.user.role) && req.user.id !== updateRecord.user_id) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
@@ -134,7 +141,7 @@ const deleteUpdate = async (req, res) => {
       return res.status(404).json({ error: "Update not found" });
     }
 
-    if (req.user.role !== "Project Manager" && req.user.id !== checkResult.rows[0].user_id) {
+    if (!isManagementRole(req.user.role) && req.user.id !== checkResult.rows[0].user_id) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 

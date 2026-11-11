@@ -153,12 +153,15 @@ const getTask = async (req, res) => {
 
 const createTask = async (req, res) => {
     try {
-        const { projectId } = req.params;
+        const rawProjectId = req.params.projectId || req.body.projectId;
+        const effectiveProjectId = (rawProjectId && rawProjectId !== 'standalone' && rawProjectId !== 'none' && rawProjectId !== 'null')
+            ? rawProjectId.trim()
+            : null;
         const { name, description, status, priority, assigneeId, startDate, dueDate } = req.body;
         const userId = req.user.id;
         const userRole = req.user.role;
 
-        console.log('🔍 Creating task:', { projectId, name, assigneeId, user: userId });
+        console.log('🔍 Creating task:', { effectiveProjectId, name, assigneeId, user: userId, role: userRole });
 
         if (!name || !name.trim()) {
             return res.status(400).json({
@@ -167,39 +170,52 @@ const createTask = async (req, res) => {
             });
         }
 
-        // Verify project exists and get project info
-        const projectResult = await safeQuery(
-            `SELECT id, created_by, project_manager_id FROM projects WHERE id = $1`,
-            [projectId]
-        );
-
-        if (projectResult.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Project not found."
-            });
-        }
-
-        const project = projectResult.rows[0];
-
-        // Check project member mapping
-        const memberCheck = await safeQuery(
-            `SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2`,
-            [projectId, userId]
-        );
-
         const isExecutive = userRole === 'Executive Manager';
         const isSystemAdmin = userRole === 'System Administrator';
-        const isProjectManager = project.project_manager_id === userId || userRole === 'Project Manager';
-        const isCreator = project.created_by === userId;
-        const isMember = memberCheck.rows.length > 0;
+        const isTaskManager = userRole === 'Task Manager';
+        let project = null;
 
-        // Authorization check
-        if (!isExecutive && !isSystemAdmin && !isProjectManager && !isCreator && !isMember) {
-            return res.status(403).json({
-                success: false,
-                message: "Only project managers, creators, or assigned team members can create tasks."
-            });
+        if (effectiveProjectId) {
+            // Verify project exists and get project info
+            const projectResult = await safeQuery(
+                `SELECT id, created_by, project_manager_id FROM projects WHERE id = $1`,
+                [effectiveProjectId]
+            );
+
+            if (projectResult.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Project not found."
+                });
+            }
+
+            project = projectResult.rows[0];
+
+            // Check project member mapping
+            const memberCheck = await safeQuery(
+                `SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2`,
+                [effectiveProjectId, userId]
+            );
+
+            const isProjectManager = project.project_manager_id === userId || userRole === 'Project Manager';
+            const isCreator = project.created_by === userId;
+            const isMember = memberCheck.rows.length > 0;
+
+            // Authorization check
+            if (!isExecutive && !isSystemAdmin && !isTaskManager && !isProjectManager && !isCreator && !isMember) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Only project managers, task managers, creators, or assigned team members can create tasks."
+                });
+            }
+        } else {
+            // Standalone / Program Task without specific project
+            if (!isExecutive && !isSystemAdmin && !isTaskManager && userRole !== 'Project Manager') {
+                return res.status(403).json({
+                    success: false,
+                    message: "Only managers can create standalone tasks."
+                });
+            }
         }
 
         // Verify assignee exists if provided
@@ -222,21 +238,23 @@ const createTask = async (req, res) => {
             assigneeName = assigneeResult.rows[0].full_name;
             assigneeEmail = assigneeResult.rows[0].email;
 
-            // Auto-add to project_members if not already there
-            const memberCheck2 = await safeQuery(
-                `SELECT user_id FROM project_members WHERE project_id = $1 AND user_id = $2`,
-                [projectId, assigneeId]
-            );
+            // Auto-add to project_members if project exists and not already there
+            if (effectiveProjectId) {
+                const memberCheck2 = await safeQuery(
+                    `SELECT user_id FROM project_members WHERE project_id = $1 AND user_id = $2`,
+                    [effectiveProjectId, assigneeId]
+                );
 
-            if (memberCheck2.rows.length === 0) {
-                try {
-                    const pmId = `pm-${Date.now()}-${Math.floor(Math.random()*1000)}`;
-                    await safeQuery(
-                        `INSERT INTO project_members (id, project_id, user_id, role) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-                        [pmId, projectId, assigneeId, "Member"]
-                    );
-                } catch (error) {
-                    console.warn("Could not add user to project members:", error);
+                if (memberCheck2.rows.length === 0) {
+                    try {
+                        const pmId = `pm-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+                        await safeQuery(
+                            `INSERT INTO project_members (id, project_id, user_id, role) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+                            [pmId, effectiveProjectId, assigneeId, "Member"]
+                        );
+                    } catch (error) {
+                        console.warn("Could not add user to project members:", error);
+                    }
                 }
             }
         }
@@ -279,7 +297,7 @@ const createTask = async (req, res) => {
             `,
             [
                 taskId,
-                projectId,
+                effectiveProjectId,
                 trimmedName,
                 trimmedName,
                 description || null,
@@ -332,7 +350,7 @@ const updateTask = async (req, res) => {
 
         // Verify task exists and get project info
         const taskResult = await safeQuery(
-            `SELECT project_id FROM tasks WHERE id = $1`,
+            `SELECT id, project_id, created_by FROM tasks WHERE id = $1`,
             [taskId]
         );
 
@@ -343,19 +361,35 @@ const updateTask = async (req, res) => {
             });
         }
 
-        const projectId = taskResult.rows[0].project_id;
+        const taskRecord = taskResult.rows[0];
+        const projectId = taskRecord.project_id;
+        const userRole = req.user.role;
+        const isExecutive = userRole === 'Executive Manager';
+        const isSystemAdmin = userRole === 'System Administrator';
+        const isTaskManager = userRole === 'Task Manager';
+        const isTaskCreator = taskRecord.created_by === userId;
 
-        // Verify user is project creator or manager
-        const projectResult = await safeQuery(
-            `SELECT created_by, project_manager_id FROM projects WHERE id = $1`,
-            [projectId]
-        );
+        let hasPermission = isExecutive || isSystemAdmin || isTaskManager || isTaskCreator;
 
-        const project = projectResult.rows[0];
-        if (project.created_by !== userId && project.project_manager_id !== userId) {
+        if (!hasPermission && projectId) {
+            // Verify user is project creator or manager
+            const projectResult = await safeQuery(
+                `SELECT created_by, project_manager_id FROM projects WHERE id = $1`,
+                [projectId]
+            );
+
+            if (projectResult.rows.length > 0) {
+                const project = projectResult.rows[0];
+                if (project.created_by === userId || project.project_manager_id === userId || userRole === 'Project Manager') {
+                    hasPermission = true;
+                }
+            }
+        }
+
+        if (!hasPermission) {
             return res.status(403).json({
                 success: false,
-                message: "Only project creator or manager can update tasks."
+                message: "Only project managers, task managers, or task creators can update tasks."
             });
         }
 
@@ -511,26 +545,26 @@ const updateTaskStatus = async (req, res) => {
         // =========================================================
 
         // ---------------------------------------------------------
-        // MEMBERS
-        // Members can only set: "To Do" (revert), "In Progress", "Completed"
-        // Members CANNOT set: "Done" or "Backlog"
+        // MEMBERS & WORKERS
+        // Members and Workers can only set: "To Do" (revert), "In Progress", "Completed"
+        // Cannot set: "Done" or "Backlog"
         // ---------------------------------------------------------
-        if (userRole === "Member") {
+        if (userRole === "Member" || userRole === "Worker") {
             if (status === "Done") {
                 return res.status(403).json({
                     success: false,
-                    message: "Members cannot mark tasks as Done. Please mark the task as Completed and the Project Manager will review it."
+                    message: "Workers and members cannot mark tasks as Done. Please mark the task as Completed for review."
                 });
             }
 
             if (status === "Backlog") {
                 return res.status(403).json({
                     success: false,
-                    message: "Members cannot move tasks to Backlog."
+                    message: "Workers and members cannot move tasks to Backlog."
                 });
             }
 
-            // Members can only update their own assigned tasks
+            // Can only update their own assigned tasks
             if (String(currentTask.assignee_id) !== String(userId)) {
                 return res.status(403).json({
                     success: false,
@@ -542,7 +576,7 @@ const updateTaskStatus = async (req, res) => {
             if (currentStatus === "Completed" && status === "To Do") {
                 return res.status(403).json({
                     success: false,
-                    message: "You cannot move a Completed task back to To Do. Please contact your Project Manager."
+                    message: "You cannot move a Completed task back to To Do. Please contact your manager."
                 });
             }
         }
@@ -634,13 +668,14 @@ const deleteTask = async (req, res) => {
         const allowedRoles = [
             "Project Manager",
             "Executive Manager",
-            "System Administrator"
+            "System Administrator",
+            "Task Manager"
         ];
 
         if (!allowedRoles.includes(userRole)) {
             return res.status(403).json({
                 success: false,
-                message: "Only Project Manager, Executive Manager, or System Administrator can delete tasks."
+                message: "Only Project Manager, Task Manager, Executive Manager, or System Administrator can delete tasks."
             });
         }
 
@@ -734,11 +769,12 @@ const assignTask = async (req, res) => {
                 t.id AS task_id,
                 t.name AS task_name,
                 t.project_id,
+                t.created_by AS task_created_by,
                 p.name AS project_name,
                 p.project_manager_id,
                 p.created_by
             FROM tasks t
-            INNER JOIN projects p ON p.id = t.project_id
+            LEFT JOIN projects p ON p.id = t.project_id
             WHERE t.id = $1
             `,
             [taskId]
@@ -767,14 +803,14 @@ const assignTask = async (req, res) => {
         }
 
         const userRole = userRoleResult.rows[0].role;
-        const isProjectCreator = task.created_by === userId;
+        const isProjectCreator = task.created_by === userId || task.task_created_by === userId;
         const isAdmin = userRole === "System Administrator" || userRole === "Executive Manager";
-        const isPM = userRole === "Project Manager";
+        const isPM = userRole === "Project Manager" || userRole === "Task Manager";
 
         if (!isAdmin && !isPM && !isProjectCreator) {
             return res.status(403).json({
                 success: false,
-                message: "Only System Administrator, Project Manager, or the Project Creator can assign tasks.",
+                message: "Only System Administrator, Project Manager, Task Manager, or the Creator can assign tasks.",
             });
         }
 
@@ -797,28 +833,30 @@ const assignTask = async (req, res) => {
 
         const assignee = assigneeResult.rows[0];
 
-        // Check if assignee is already a project member
-        const projectMemberCheck = await safeQuery(
-            `
-            SELECT user_id FROM project_members 
-            WHERE project_id = $1 AND user_id = $2
-            `,
-            [task.project_id, assigneeId]
-        );
+        // Check if assignee is already a project member (if project exists)
+        if (task.project_id) {
+            const projectMemberCheck = await safeQuery(
+                `
+                SELECT user_id FROM project_members 
+                WHERE project_id = $1 AND user_id = $2
+                `,
+                [task.project_id, assigneeId]
+            );
 
-        // Auto-add to project_members if not already there
-        if (projectMemberCheck.rows.length === 0) {
-            try {
-                await safeQuery(
-                    `
-                    INSERT INTO project_members (project_id, user_id, role)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT DO NOTHING
-                    `,
-                    [task.project_id, assigneeId, assignee.role || "Member"]
-                );
-            } catch (error) {
-                console.warn("Could not add user to project members:", error);
+            // Auto-add to project_members if not already there
+            if (projectMemberCheck.rows.length === 0) {
+                try {
+                    await safeQuery(
+                        `
+                        INSERT INTO project_members (project_id, user_id, role)
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT DO NOTHING
+                        `,
+                        [task.project_id, assigneeId, assignee.role || "Member"]
+                    );
+                } catch (error) {
+                    console.warn("Could not add user to project members:", error);
+                }
             }
         }
 
@@ -1086,15 +1124,15 @@ const getTasks = async (req, res) => {
         const params = [];
         let paramIndex = 1;
 
-        const isMember = userRole === 'Member';
+        const isMemberOrWorker = userRole === 'Member' || userRole === 'Worker';
         const isProjectManager = userRole === 'Project Manager';
 
-        if (isMember) {
+        if (isMemberOrWorker) {
             query += ` AND t.assignee_id = $${paramIndex}`;
             params.push(userId);
             paramIndex++;
         } else if (isProjectManager) {
-            query += ` AND p.project_manager_id = $${paramIndex}`;
+            query += ` AND (p.project_manager_id = $${paramIndex} OR t.created_by = $${paramIndex})`;
             params.push(userId);
             paramIndex++;
         }

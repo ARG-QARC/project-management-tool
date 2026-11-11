@@ -17,7 +17,7 @@ const isManagementRole = async (userId) => {
         [userId]
     );
     const role = result.rows[0]?.role;
-    return ['System Administrator', 'Executive Manager', 'Project Manager'].includes(role);
+    return ['System Administrator', 'Executive Manager', 'Project Manager', 'Task Manager'].includes(role);
 };
 
 // ================================
@@ -62,9 +62,9 @@ const addSubmission = async (req, res) => {
         );
         const userRole = userResult.rows[0]?.role;
 
-        if (userRole !== 'Member') {
+        if (userRole !== 'Member' && userRole !== 'Worker') {
             return res.status(403).json({
-                error: 'Only Members can submit work'
+                error: 'Only Members and Workers can submit work'
             });
         }
 

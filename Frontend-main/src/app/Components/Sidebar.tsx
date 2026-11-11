@@ -182,7 +182,7 @@ export default function Sidebar() {
                 <UserCheck size={12} className="text-emerald-400 shrink-0" />
               )}
               <span className="text-[10px] font-bold tracking-wider uppercase truncate">
-                {isManager ? "Project Manager" : "Team Member"}
+                {user?.role || (isManager ? "Project Manager" : "Team Member")}
               </span>
             </div>
             <span

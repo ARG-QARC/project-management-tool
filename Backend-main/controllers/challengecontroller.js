@@ -5,6 +5,7 @@ const MANAGEMENT_ROLES = [
   "Project Manager",
   "Executive Manager",
   "System Administrator",
+  "Task Manager",
 ];
 
 /* =========================================================
@@ -180,13 +181,13 @@ const createTaskChallenge = async (req, res) => {
         }
 
         /* ---------------------------------------------------------
-           Only Members can add challenges
+           Only Members and Workers can add challenges
         --------------------------------------------------------- */
-        if (req.user.role !== "Member") {
-            console.log('❌ Non-Member tried to add challenge:', req.user.role);
+        if (req.user.role !== "Member" && req.user.role !== "Worker") {
+            console.log('❌ Non-Member/Worker tried to add challenge:', req.user.role);
             return res.status(403).json({
                 success: false,
-                message: "Only Members can add task challenges.",
+                message: "Only Members and Workers can add task challenges.",
             });
         }
 

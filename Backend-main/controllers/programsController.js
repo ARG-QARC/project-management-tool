@@ -26,7 +26,7 @@ const safeTransaction = async (callback) => {
 };
 
 const isAdminOrManager = (role) =>
-    ["Executive Manager", "System Administrator", "Project Manager"].includes(role);
+    ["Executive Manager", "System Administrator", "Project Manager", "Task Manager"].includes(role);
 
 /* =========================================================
    GET ALL PROGRAMS (with project counts)
@@ -680,17 +680,21 @@ const getAssignableUsers = async (req, res) => {
             WHERE is_active = TRUE
               AND role IN (
                   'Member',
+                  'Worker',
+                  'Task Manager',
                   'Project Manager',
                   'Executive Manager',
                   'System Administrator'
               )
             ORDER BY
                 CASE role
-                    WHEN 'Member' THEN 1
-                    WHEN 'Project Manager' THEN 2
-                    WHEN 'Executive Manager' THEN 3
-                    WHEN 'System Administrator' THEN 4
-                    ELSE 5
+                    WHEN 'Worker' THEN 1
+                    WHEN 'Member' THEN 2
+                    WHEN 'Task Manager' THEN 3
+                    WHEN 'Project Manager' THEN 4
+                    WHEN 'Executive Manager' THEN 5
+                    WHEN 'System Administrator' THEN 6
+                    ELSE 7
                 END,
                 full_name ASC
             `
