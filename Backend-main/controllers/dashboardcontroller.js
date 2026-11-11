@@ -528,7 +528,7 @@ const getManagerDashboard = async (req, res) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role || "";
-        const isExecutiveOrAdmin = userRole === "Executive Manager" || userRole === "System Administrator";
+        const isExecutiveOrAdmin = userRole === "Executive Manager" || userRole === "System Administrator" || userRole === "Task Manager";
 
         console.log(`🔍 Fetching manager dashboard for user: ${userId} (${userRole})`);
 
@@ -774,7 +774,8 @@ const getRoleDashboard = async (req, res) => {
     const isManager = [
         "Project Manager",
         "Executive Manager",
-        "System Administrator"
+        "System Administrator",
+        "Task Manager"
     ].includes(userRole);
 
     if (isManager) {

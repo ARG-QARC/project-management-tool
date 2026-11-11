@@ -20,6 +20,7 @@ const MANAGEMENT_ROLES = [
     "Project Manager",
     "Executive Manager",
     "System Administrator",
+    "Task Manager",
 ];
 
 router.get(

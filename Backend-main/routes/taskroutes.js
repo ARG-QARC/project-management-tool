@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { authenticate } = require("../middleware/authMiddleware");
+const { authenticate, requireRole } = require("../middleware/authMiddleware");
 const requireSystemAdministrator = require("../middleware/adminMiddleware");
 
 const {
@@ -36,6 +36,9 @@ router.get("/project/:projectId", authenticate, getProjectTasks);
 // 3. TASK-SCOPED ROUTES
 // =========================================================
 
+// Create task (general / standalone or with body projectId)
+router.post("/", authenticate, createTask);
+
 // Create task in project
 router.post("/project/:projectId", authenticate, createTask);
 
@@ -52,7 +55,7 @@ router.patch("/:taskId", authenticate, updateTask);
 router.delete(
   "/:taskId",
   authenticate,
-  requireSystemAdministrator,
+  requireRole("System Administrator", "Executive Manager", "Project Manager", "Task Manager"),
   deleteTask
 );
 

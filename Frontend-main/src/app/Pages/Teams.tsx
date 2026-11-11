@@ -13,11 +13,14 @@ function getInitials(name: string) {
 
 const ROLE_COLORS: Record<string, string> = {
   "Project Manager": "bg-blue-50 text-blue-700 border-blue-200",
+  "Task Manager": "bg-cyan-50 text-cyan-700 border-cyan-200",
   "Developer": "bg-violet-50 text-violet-700 border-violet-200",
   "Designer": "bg-pink-50 text-pink-700 border-pink-200",
   "QA Engineer": "bg-amber-50 text-amber-700 border-amber-200",
   "System Administrator": "bg-rose-50 text-rose-700 border-rose-200",
   "Executive Manager": "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "Worker": "bg-amber-50 text-amber-700 border-amber-200",
+  "Member": "bg-slate-100 text-slate-700 border-slate-200",
 };
 
 function roleColor(role: string) {

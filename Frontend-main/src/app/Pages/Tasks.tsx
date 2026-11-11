@@ -248,29 +248,49 @@ export default function Tasks() {
       let allTasks: Task[] = [];
 
       if (isManager) {
-        const arrays = await Promise.all(
-          loadedProjects.map(async (p) => {
-            const res = await fetch(`${API_BASE}/tasks/project/${p.id}`, { headers }).catch(() => null);
-            if (!res || !res.ok) return [];
-            const d = await res.json();
-            return (d.tasks || d.data || []).map((t: any) => ({
-              id: String(t.id),
-              name: t.name || t.title || "Untitled Task",
-              description: t.description || "",
-              status: (t.status || "To Do") as TaskStatus,
-              priority: (t.priority || "Medium") as Priority,
-              project_id: String(p.id),
-              project_name: p.name,
-              assignee_id: t.assignee_id ? String(t.assignee_id) : undefined,
-              assignee_name: t.assignee_name || t.assignee?.full_name || undefined,
-              assignee_email: t.assignee_email || t.assignee?.email || undefined,
-              start_date: t.start_date || t.startDate || "",
-              due_date: t.due_date || t.dueDate || "",
-              created_at: t.created_at || t.createdAt || "",
-            }));
-          })
-        );
-        allTasks = arrays.flat();
+        const res = await fetch(`${API_BASE}/tasks`, { headers }).catch(() => null);
+        if (res && res.ok) {
+          const d = await res.json();
+          allTasks = (d.tasks || d.data || []).map((t: any) => ({
+            id: String(t.id),
+            name: t.name || t.title || "Untitled Task",
+            description: t.description || "",
+            status: (t.status || "To Do") as TaskStatus,
+            priority: (t.priority || "Medium") as Priority,
+            project_id: t.project_id ? String(t.project_id) : undefined,
+            project_name: t.project_name || "Program Tasks (Individual)",
+            assignee_id: t.assignee_id ? String(t.assignee_id) : undefined,
+            assignee_name: t.assignee_name || t.assignee?.full_name || undefined,
+            assignee_email: t.assignee_email || t.assignee?.email || undefined,
+            start_date: t.start_date || t.startDate || "",
+            due_date: t.due_date || t.dueDate || "",
+            created_at: t.created_at || t.createdAt || "",
+          }));
+        } else {
+          const arrays = await Promise.all(
+            loadedProjects.map(async (p) => {
+              const pRes = await fetch(`${API_BASE}/tasks/project/${p.id}`, { headers }).catch(() => null);
+              if (!pRes || !pRes.ok) return [];
+              const d = await pRes.json();
+              return (d.tasks || d.data || []).map((t: any) => ({
+                id: String(t.id),
+                name: t.name || t.title || "Untitled Task",
+                description: t.description || "",
+                status: (t.status || "To Do") as TaskStatus,
+                priority: (t.priority || "Medium") as Priority,
+                project_id: String(p.id),
+                project_name: p.name,
+                assignee_id: t.assignee_id ? String(t.assignee_id) : undefined,
+                assignee_name: t.assignee_name || t.assignee?.full_name || undefined,
+                assignee_email: t.assignee_email || t.assignee?.email || undefined,
+                start_date: t.start_date || t.startDate || "",
+                due_date: t.due_date || t.dueDate || "",
+                created_at: t.created_at || t.createdAt || "",
+              }));
+            })
+          );
+          allTasks = arrays.flat();
+        }
       } else {
         const res = await fetch(`${API_BASE}/tasks/my/tasks`, { headers }).catch(() => null);
         if (res && res.ok) {
@@ -443,16 +463,15 @@ export default function Tasks() {
       setCreateError("Task title is required");
       return;
     }
-    if (!taskForm.projectId) {
-      setCreateError("Please select a project");
-      return;
-    }
+    const effectiveProjectId = (taskForm.projectId && taskForm.projectId !== "standalone") ? taskForm.projectId : null;
 
     setCreating(true);
     setCreateError("");
 
     try {
-      let endpoint = `${API_BASE}/tasks/project/${taskForm.projectId}`;
+      let endpoint = effectiveProjectId
+        ? `${API_BASE}/tasks/project/${effectiveProjectId}`
+        : `${API_BASE}/tasks`;
       let method = "POST";
       
       if (taskModalMode === "edit" && editTaskId) {
@@ -469,6 +488,7 @@ export default function Tasks() {
           status: taskForm.status,
           priority: taskForm.priority,
           assigneeId: taskForm.assigneeId || null,
+          projectId: effectiveProjectId,
           projectManagerId: user?.id,
           startDate: taskForm.startDate || null,
           dueDate: taskForm.dueDate || null,
@@ -1518,15 +1538,14 @@ export default function Tasks() {
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Project *
+                  Project Scope
                 </label>
                 <select
-                  required
                   value={taskForm.projectId}
                   onChange={e => setTaskForm({ ...taskForm, projectId: e.target.value })}
                   className="w-full text-sm border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
                 >
-                  <option value="">Select project...</option>
+                  <option value="standalone">Program Tasks (Individual / Standalone)</option>
                   {projects.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
@@ -1545,7 +1564,9 @@ export default function Tasks() {
                   >
                     <option value="">Unassigned</option>
                     {members.map(m => (
-                      <option key={m.id} value={m.id}>{m.full_name}</option>
+                      <option key={m.id} value={m.id}>
+                        {m.full_name}{m.role ? ` (${m.role})` : ""}
+                      </option>
                     ))}
                   </select>
                 </div>

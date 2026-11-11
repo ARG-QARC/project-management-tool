@@ -27,7 +27,7 @@ router.get("/stats", authenticate, getRoleDashboard);
 router.get(
   "/manager",
   authenticate,
-  requireRole("Project Manager", "Executive Manager", "System Administrator"),
+  requireRole("Project Manager", "Executive Manager", "System Administrator", "Task Manager"),
   getManagerDashboard
 );
 

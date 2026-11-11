@@ -389,7 +389,7 @@ export default function Dashboard() {
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
-              <Briefcase size={13} /> Project Manager Overview
+              <Briefcase size={13} /> {userRole.includes("Task Manager") ? "Task Manager Overview" : userRole.includes("Project") ? "Project Manager Overview" : "Manager Overview"}
             </button>
             <button
               type="button"

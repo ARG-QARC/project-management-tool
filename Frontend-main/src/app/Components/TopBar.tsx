@@ -260,7 +260,7 @@ export default function TopBar() {
                         : "bg-emerald-50 border-emerald-200 text-emerald-700"
                     }`}
                   >
-                    {isManager ? "Project Manager" : "Team Member"}
+                    {user?.role || (isManager ? "Project Manager" : "Team Member")}
                   </span>
                 )}
               </div>

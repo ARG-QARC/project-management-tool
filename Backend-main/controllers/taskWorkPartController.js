@@ -7,7 +7,7 @@ const isManagementRole = async (userId) => {
         [userId]
     );
     const role = result.rows[0]?.role;
-    return ['System Administrator', 'Executive Manager', 'Project Manager'].includes(role);
+    return ['System Administrator', 'Executive Manager', 'Project Manager', 'Task Manager'].includes(role);
 };
 
 // =========================================================
