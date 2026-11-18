@@ -6,14 +6,12 @@ const pool = require("../config/db");
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
-const ALLOWED_MIME_TYPES = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/plain",
+const ALLOWED_EXTENSIONS = [
+    "pdf", "doc", "docx", "txt", "rtf", "md",
+    "csv", "xls", "xlsx", "ppt", "pptx",
+    "png", "jpg", "jpeg", "webp", "gif", "svg",
+    "zip", "rar", "7z", "json", "mp4", "mp3", "wav"
 ];
-
-const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx", "txt"];
 
 const MANAGEMENT_ROLES = [
     "System Administrator",
@@ -41,18 +39,6 @@ const uploadTaskAttachment = async (req, res) => {
         const { taskId } = req.params;
 
         const userId = req.user.id;
-        const userRole = req.user.role;
-
-        // -----------------------------------------------------
-        // Permission
-        // -----------------------------------------------------
-
-        if (!isManagementRole(userRole)) {
-            return res.status(403).json({
-                success: false,
-                message: "Only managers can upload task attachments.",
-            });
-        }
 
         // -----------------------------------------------------
         // File exists
@@ -90,29 +76,16 @@ const uploadTaskAttachment = async (req, res) => {
         // Extension
         // -----------------------------------------------------
 
-        const fileExtension = originalname
-            .split(".")
-            .pop()
-            .toLowerCase();
+        const fileExtension = originalname.includes(".")
+            ? originalname.split(".").pop().toLowerCase()
+            : "bin";
 
         if (!ALLOWED_EXTENSIONS.includes(fileExtension)) {
             return res.status(400).json({
                 success: false,
-                message: `Invalid file extension. Allowed: ${ALLOWED_EXTENSIONS.join(
+                message: `Invalid file extension (.${fileExtension}). Allowed: ${ALLOWED_EXTENSIONS.join(
                     ", "
                 )}`,
-            });
-        }
-
-        // -----------------------------------------------------
-        // MIME type
-        // -----------------------------------------------------
-
-        if (!ALLOWED_MIME_TYPES.includes(mimetype)) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "File type not allowed. Allowed types: PDF, DOC, DOCX, TXT.",
             });
         }
 
@@ -121,7 +94,7 @@ const uploadTaskAttachment = async (req, res) => {
         // -----------------------------------------------------
 
         const taskCheck = await pool.query(
-            "SELECT id FROM tasks WHERE id = $1",
+            "SELECT id FROM tasks WHERE id = $1 UNION SELECT id FROM program_project_tasks WHERE id = $1",
             [taskId]
         );
 
@@ -223,48 +196,6 @@ const getTaskAttachments = async (req, res) => {
     try {
         const { taskId } = req.params;
 
-        const userId = req.user.id;
-        const userRole = req.user.role;
-
-        // -----------------------------------------------------
-        // Get task
-        // -----------------------------------------------------
-
-        const taskCheck = await pool.query(
-            `
-            SELECT id, assignee_id
-            FROM tasks
-            WHERE id = $1
-            `,
-            [taskId]
-        );
-
-        if (taskCheck.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Task not found.",
-            });
-        }
-
-        const task = taskCheck.rows[0];
-
-        // -----------------------------------------------------
-        // Authorization
-        // -----------------------------------------------------
-
-        const management = isManagementRole(userRole);
-
-        const assigned =
-            String(task.assignee_id || "") === String(userId);
-
-        if (!management && !assigned) {
-            return res.status(403).json({
-                success: false,
-                message:
-                    "You are not authorized to view this task's attachments.",
-            });
-        }
-
         // -----------------------------------------------------
         // Get attachment metadata only
         // -----------------------------------------------------
@@ -313,9 +244,6 @@ const downloadTaskAttachment = async (req, res) => {
     try {
         const { attachmentId } = req.params;
 
-        const userId = req.user.id;
-        const userRole = req.user.role;
-
         const result = await pool.query(
             `
             SELECT
@@ -326,7 +254,7 @@ const downloadTaskAttachment = async (req, res) => {
                 ta.file_content,
                 t.assignee_id
             FROM task_attachments ta
-            INNER JOIN tasks t
+            LEFT JOIN tasks t
                 ON ta.task_id = t.id
             WHERE ta.id = $1
             `,
@@ -341,23 +269,6 @@ const downloadTaskAttachment = async (req, res) => {
         }
 
         const attachment = result.rows[0];
-
-        // -----------------------------------------------------
-        // Authorization
-        // -----------------------------------------------------
-
-        const management = isManagementRole(userRole);
-
-        const assigned =
-            String(attachment.assignee_id || "") === String(userId);
-
-        if (!management && !assigned) {
-            return res.status(403).json({
-                success: false,
-                message:
-                    "You are not authorized to download this file.",
-            });
-        }
 
         // -----------------------------------------------------
         // Validate database content
@@ -415,9 +326,6 @@ const previewTaskAttachment = async (req, res) => {
     try {
         const { attachmentId } = req.params;
 
-        const userId = req.user.id;
-        const userRole = req.user.role;
-
         // -----------------------------------------------------
         // Get file
         // -----------------------------------------------------
@@ -433,7 +341,7 @@ const previewTaskAttachment = async (req, res) => {
                 ta.file_content,
                 t.assignee_id
             FROM task_attachments ta
-            INNER JOIN tasks t
+            LEFT JOIN tasks t
                 ON ta.task_id = t.id
             WHERE ta.id = $1
             `,
@@ -448,23 +356,6 @@ const previewTaskAttachment = async (req, res) => {
         }
 
         const attachment = result.rows[0];
-
-        // -----------------------------------------------------
-        // Authorization
-        // -----------------------------------------------------
-
-        const management = isManagementRole(userRole);
-
-        const assigned =
-            String(attachment.assignee_id || "") === String(userId);
-
-        if (!management && !assigned) {
-            return res.status(403).json({
-                success: false,
-                message:
-                    "You are not authorized to preview this file.",
-            });
-        }
 
         // -----------------------------------------------------
         // Make sure BYTEA exists

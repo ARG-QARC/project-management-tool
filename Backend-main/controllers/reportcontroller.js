@@ -134,7 +134,13 @@ const extractReportContent = async (file) => {
         throw new Error("Old .doc files are not supported. Please save the document as .docx and upload it again.");
     }
 
-    throw new Error("Only PDF and DOCX files can be used for report content.");
+    // Plain text / CSV / Markdown
+    if ([".txt", ".csv", ".md", ".json"].includes(extension) || (file.mimetype && file.mimetype.startsWith("text/"))) {
+        return fs.readFileSync(file.path, "utf8").trim();
+    }
+
+    // Other allowed files (Excel, images, etc.)
+    return `Uploaded report attachment: ${file.originalname} (${(file.size / 1024).toFixed(1)} KB)`;
 };
 
 /* =========================================================
@@ -168,25 +174,18 @@ async function getCurrentUser(userId) {
 ========================================================= */
 
 function buildProjectAccess(role, userId, userParamNumber = 1) {
-    if (role === "Executive Manager" || role === "System Administrator") {
+    if (["Executive Manager", "System Administrator", "Project Manager", "Task Manager"].includes(role)) {
         return { sql: "", params: [] };
     }
 
-    if (role === "Project Manager") {
-        return {
-            sql: `AND p.project_manager_id = $${userParamNumber}`,
-            params: [userId],
-        };
-    }
-
-    if (role === "Member") {
+    if (role === "Member" || role === "Worker" || role === "Intern") {
         return {
             sql: `
                 AND EXISTS (
                     SELECT 1
                     FROM tasks t_access
                     WHERE t_access.project_id = p.id
-                    AND t_access.assignee_id = $${userParamNumber}
+                    AND (t_access.assignee_id = $${userParamNumber} OR t_access.assigned_to = $${userParamNumber})
                 )
             `,
             params: [userId],
@@ -501,15 +500,15 @@ const createOrUpdateReport = async (req, res) => {
             });
         }
 
-        // Only PM can submit
-        if (user.role !== "Project Manager") {
+        // Allow any manager/admin role to submit reports
+        if (!["Project Manager", "Task Manager", "Executive Manager", "System Administrator"].includes(user.role)) {
             return res.status(403).json({
                 success: false,
-                message: "Only Project Managers can create or update project reports",
+                message: "Only Managers or Administrators can create or update project reports",
             });
         }
 
-        // Verify assigned project
+        // Verify project exists
         const projectResult = await safeQuery(
             `
             SELECT id, name, project_manager_id
@@ -523,15 +522,6 @@ const createOrUpdateReport = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: "Project not found",
-            });
-        }
-
-        const project = projectResult.rows[0];
-
-        if (project.project_manager_id !== user.id) {
-            return res.status(403).json({
-                success: false,
-                message: "You can only submit reports for projects assigned to you",
             });
         }
 
@@ -623,11 +613,11 @@ const uploadProjectReportFile = async (req, res) => {
             });
         }
 
-        // Only PM can upload
-        if (user.role !== "Project Manager") {
+        // Allow any manager/admin role to upload
+        if (!["Project Manager", "Task Manager", "Executive Manager", "System Administrator"].includes(user.role)) {
             return res.status(403).json({
                 success: false,
-                message: "Only Project Managers can upload project report files",
+                message: "Only Managers or Administrators can upload project report files",
             });
         }
 
@@ -645,15 +635,6 @@ const uploadProjectReportFile = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: "Project not found",
-            });
-        }
-
-        const project = projectResult.rows[0];
-
-        if (project.project_manager_id !== user.id) {
-            return res.status(403).json({
-                success: false,
-                message: "You can only upload files for projects assigned to you",
             });
         }
 

@@ -186,19 +186,24 @@ export default function Tasks() {
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [subLink, setSubLink] = useState("");
   const [subDesc, setSubDesc] = useState("");
+  const [subFile, setSubFile] = useState<File | null>(null);
   const [savingSub, setSavingSub] = useState(false);
 
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [loadingChallenges, setLoadingChallenges] = useState(false);
   const [newChallenge, setNewChallenge] = useState("");
   const [savingChallenge, setSavingChallenge] = useState(false);
 
+  const getToken = () =>
+    (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("accessToken"))) || "";
+
   const getHeaders = (): HeadersInit => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     return {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -206,7 +211,7 @@ export default function Tasks() {
   };
 
   const getAuthOnlyHeader = (): HeadersInit => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
@@ -602,26 +607,55 @@ export default function Tasks() {
     }
   };
 
-  // Submissions Add
+  // Submissions Add (supports link, notes, and/or attached file)
   const handleAddSubmission = async () => {
     if (!selectedTask) return;
+    if (!subLink.trim() && !subDesc.trim() && !subFile) return;
     setSavingSub(true);
     try {
+      let finalLink = subLink.trim() || null;
+
+      if (subFile) {
+        const formData = new FormData();
+        formData.append("file", subFile);
+        const upRes = await fetch(`${API_BASE}/tasks/${selectedTask.id}/attachments`, {
+          method: "POST",
+          headers: getAuthOnlyHeader(),
+          body: formData,
+        });
+        const upData = await upRes.json().catch(() => ({}));
+        if (!upRes.ok) {
+          alert(upData.message || "Failed to upload deliverable file.");
+          setSavingSub(false);
+          return;
+        }
+        const attId = upData.attachment?.id || upData.id;
+        if (attId && !finalLink) {
+          finalLink = `${API_BASE}/attachments/${attId}/preview`;
+        }
+        fetchAttachments(selectedTask.id);
+      }
+
       const res = await fetch(`${API_BASE}/tasks/${selectedTask.id}/submissions`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
-          link: subLink.trim() || null,
-          description: subDesc.trim() || null,
+          link: finalLink,
+          description: subDesc.trim() || (subFile ? `Uploaded deliverable file: ${subFile.name}` : null),
         }),
       });
       if (res.ok) {
         setSubLink("");
         setSubDesc("");
+        setSubFile(null);
         fetchSubmissions(selectedTask.id);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.message || "Failed to submit deliverable.");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(e.message || "Failed to submit deliverable.");
     } finally {
       setSavingSub(false);
     }
@@ -633,6 +667,7 @@ export default function Tasks() {
     if (!file || !selectedTask) return;
 
     setUploadingFile(true);
+    setUploadError("");
     const formData = new FormData();
     formData.append("file", file);
 
@@ -642,11 +677,15 @@ export default function Tasks() {
         headers: getAuthOnlyHeader(),
         body: formData,
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        fetchAttachments(selectedTask.id);
+        await fetchAttachments(selectedTask.id);
+      } else {
+        setUploadError(data.message || "Failed to upload file.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setUploadError(err.message || "Network error while uploading file.");
     } finally {
       setUploadingFile(false);
       e.target.value = "";
@@ -1346,9 +1385,19 @@ export default function Tasks() {
                     <input
                       value={subLink}
                       onChange={e => setSubLink(e.target.value)}
-                      placeholder="Proof link (e.g. GitHub PR, Figma, Drive link)"
+                      placeholder="Proof link (e.g. GitHub PR, Figma, Drive link) - optional"
                       className="w-full text-xs bg-white border border-emerald-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500/20"
                     />
+                    <div>
+                      <label className="block text-[11px] font-semibold text-emerald-800 mb-1">
+                        Or Upload Deliverable File (Optional)
+                      </label>
+                      <input
+                        type="file"
+                        onChange={e => setSubFile(e.target.files?.[0] || null)}
+                        className="w-full text-xs text-slate-600 bg-white border border-emerald-200 rounded-lg p-1.5 file:mr-2.5 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200 cursor-pointer"
+                      />
+                    </div>
                     <textarea
                       value={subDesc}
                       onChange={e => setSubDesc(e.target.value)}
@@ -1359,9 +1408,9 @@ export default function Tasks() {
                     <button
                       onClick={handleAddSubmission}
                       disabled={savingSub}
-                      className="text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg disabled:opacity-50 transition-all"
+                      className="text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg disabled:opacity-50 transition-all cursor-pointer"
                     >
-                      {savingSub ? "Saving..." : "Submit Deliverable"}
+                      {savingSub ? "Uploading & Saving..." : "Submit Deliverable"}
                     </button>
                   </div>
 
@@ -1371,27 +1420,34 @@ export default function Tasks() {
                     ) : submissions.length === 0 ? (
                       <p className="text-xs text-slate-400 py-6 text-center">No submissions recorded yet.</p>
                     ) : (
-                      submissions.map(sub => (
-                        <div key={sub.id} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-1.5">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-slate-800">Version {sub.version}</span>
-                            <span className="text-slate-400">{new Date(sub.created_at).toLocaleDateString()}</span>
+                      submissions.map(sub => {
+                        const isInternalFile = sub.link && sub.link.includes("/attachments/");
+                        const resolvedLink = isInternalFile
+                          ? `${sub.link}${sub.link.includes("?") ? "&" : "?"}token=${encodeURIComponent(getToken())}`
+                          : sub.link;
+                        return (
+                          <div key={sub.id} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-1.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-800">Version {sub.version}</span>
+                              <span className="text-slate-400">{new Date(sub.created_at).toLocaleDateString()}</span>
+                            </div>
+                            {resolvedLink && (
+                              <a
+                                href={resolvedLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs font-semibold text-indigo-600 hover:underline flex items-center gap-1 break-all"
+                              >
+                                <ExternalLink size={12} className="flex-shrink-0" />
+                                {isInternalFile ? "View Uploaded Deliverable File" : sub.link}
+                              </a>
+                            )}
+                            {sub.description && (
+                              <p className="text-xs text-slate-600 mt-1">{sub.description}</p>
+                            )}
                           </div>
-                          {sub.link && (
-                            <a
-                              href={sub.link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs font-semibold text-indigo-600 hover:underline flex items-center gap-1"
-                            >
-                              <ExternalLink size={12} /> {sub.link}
-                            </a>
-                          )}
-                          {sub.description && (
-                            <p className="text-xs text-slate-600 mt-1">{sub.description}</p>
-                          )}
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -1402,9 +1458,11 @@ export default function Tasks() {
                 <div className="space-y-4">
                   <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-indigo-400 transition-colors">
                     <label className="cursor-pointer flex flex-col items-center gap-2">
-                      <Upload size={24} className="text-indigo-600" />
-                      <span className="text-xs font-bold text-slate-700">Upload Task Attachment</span>
-                      <span className="text-[10px] text-slate-400">PDF, PNG, JPG, ZIP up to 50MB</span>
+                      <Upload size={24} className={`text-indigo-600 ${uploadingFile ? "animate-bounce" : ""}`} />
+                      <span className="text-xs font-bold text-slate-700">
+                        {uploadingFile ? "Uploading file..." : "Click to Upload Task Attachment"}
+                      </span>
+                      <span className="text-[10px] text-slate-400">PDF, DOCX, XLSX, CSV, PNG, JPG, ZIP up to 10MB</span>
                       <input
                         type="file"
                         onChange={handleFileUpload}
@@ -1414,41 +1472,62 @@ export default function Tasks() {
                     </label>
                   </div>
 
+                  {uploadError && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium flex items-center justify-between">
+                      <span>{uploadError}</span>
+                      <button onClick={() => setUploadError("")} className="text-rose-500 hover:text-rose-700">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     {loadingAttachments ? (
                       <p className="text-xs text-slate-400 py-4 text-center">Loading files...</p>
                     ) : attachments.length === 0 ? (
                       <p className="text-xs text-slate-400 py-6 text-center">No attachments for this task.</p>
                     ) : (
-                      attachments.map(att => (
-                        <div key={att.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl text-xs gap-3">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <FileText size={16} className="text-indigo-600 flex-shrink-0" />
-                            <div className="min-w-0">
-                              <p className="font-semibold text-slate-800 truncate">{att.file_name}</p>
-                              <p className="text-[10px] text-slate-400">{formatBytes(att.file_size)}</p>
+                      attachments.map(att => {
+                        const tok = encodeURIComponent(getToken());
+                        return (
+                          <div key={att.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl text-xs gap-3">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <FileText size={16} className="text-indigo-600 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-800 truncate">{att.file_name}</p>
+                                <p className="text-[10px] text-slate-400">{formatBytes(att.file_size)}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={`${API_BASE}/attachments/${att.id}/preview?token=${tok}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 text-[11px] font-semibold flex items-center gap-1"
+                                title="Preview"
+                              >
+                                <Eye size={13} /> Preview
+                              </a>
+                              <a
+                                href={`${API_BASE}/attachments/${att.id}/download?token=${tok}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-semibold flex items-center gap-1"
+                                title="Download"
+                              >
+                                Download
+                              </a>
+                              <button
+                                onClick={() => handleDeleteAttachment(att.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                                title="Delete"
+                              >
+                                <Trash2 size={14} />
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={`${API_BASE}/attachments/${att.id}/preview`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="p-1 text-slate-500 hover:text-indigo-600"
-                              title="Preview"
-                            >
-                              <Eye size={14} />
-                            </a>
-                            <button
-                              onClick={() => handleDeleteAttachment(att.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600"
-                              title="Delete"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>

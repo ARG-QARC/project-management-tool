@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { BarChart3, TrendingUp, CheckCircle2, AlertCircle, Clock, FolderKanban, ShieldCheck } from "lucide-react";
+import { BarChart3, TrendingUp, CheckCircle2, AlertCircle, Clock, FolderKanban, ShieldCheck, Upload, FileText, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { API_BASE } from "@/lib/api";
 
-type Project = { id: string; name: string; status?: string; progress?: number };
+type Project = { id: string; name: string; status?: string; progress?: number; report_id?: string; report_title?: string };
 type Task = { id: string; status?: string; due_date?: string };
 
 function MetricBox({ label, value, sub, color }: { label: string; value: number | string; sub: string; color: string }) {
@@ -32,6 +32,55 @@ export default function Reports() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploadingProjectId, setUploadingProjectId] = useState<string | null>(null);
+
+  const getToken = () =>
+    (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("accessToken"))) || "";
+
+  const handleReportUpload = async (project: Project, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingProjectId(project.id);
+    try {
+      const token = getToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      const upRes = await fetch(`${API_BASE}/reports/project/${project.id}/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const upData = await upRes.json().catch(() => ({}));
+      if (!upRes.ok) {
+        alert(upData.message || "Failed to upload report file.");
+        return;
+      }
+      // Save extracted content to project_reports
+      const saveRes = await fetch(`${API_BASE}/reports/project/${project.id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          title: `${project.name} - Executive Report (${file.name})`,
+          content: upData.content || `Uploaded report file: ${file.name}`,
+          format: "PDF",
+        }),
+      });
+      if (saveRes.ok) {
+        setProjects(prev =>
+          prev.map(p => (p.id === project.id ? { ...p, report_id: "saved", report_title: file.name } : p))
+        );
+        alert(`Report "${file.name}" uploaded and saved for ${project.name}.`);
+      }
+    } catch (err: any) {
+      alert(err.message || "Error uploading report.");
+    } finally {
+      setUploadingProjectId(null);
+      e.target.value = "";
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -114,6 +163,7 @@ export default function Reports() {
                 <th className="text-left py-3 px-6 text-[11px] font-bold uppercase tracking-wider text-gray-400">Project</th>
                 <th className="text-left py-3 px-4 text-[11px] font-bold uppercase tracking-wider text-gray-400">Status</th>
                 <th className="text-left py-3 px-4 text-[11px] font-bold uppercase tracking-wider text-gray-400">Progress</th>
+                <th className="text-right py-3 px-6 text-[11px] font-bold uppercase tracking-wider text-gray-400">Report Documents</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -121,6 +171,7 @@ export default function Reports() {
                 const prog = p.progress || 0;
                 const s = (p.status || "").toLowerCase();
                 const isComplete = s.includes("complet") || s === "done";
+                const tok = encodeURIComponent(getToken());
                 return (
                   <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="py-3.5 px-6 text-sm font-medium text-gray-800">{p.name}</td>
@@ -139,11 +190,46 @@ export default function Reports() {
                         <span className="text-xs font-semibold text-gray-500 w-8">{prog}%</span>
                       </div>
                     </td>
+                    <td className="py-3.5 px-6 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {isManager && (
+                          <label className="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/70 transition-colors">
+                            <Upload size={12} />
+                            {uploadingProjectId === p.id ? "Uploading..." : "Upload Report"}
+                            <input
+                              type="file"
+                              accept=".pdf,.docx,.txt,.csv,.xlsx,.png,.jpg"
+                              onChange={e => handleReportUpload(p, e)}
+                              disabled={uploadingProjectId === p.id}
+                              className="hidden"
+                            />
+                          </label>
+                        )}
+                        <a
+                          href={`${API_BASE}/reports/project/${p.id}/download/pdf?token=${tok}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                          title="Download PDF Report"
+                        >
+                          <Download size={12} /> PDF
+                        </a>
+                        <a
+                          href={`${API_BASE}/reports/project/${p.id}/download/word?token=${tok}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                          title="Download Word Report"
+                        >
+                          <FileText size={12} /> Word
+                        </a>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
               {projects.length === 0 && (
-                <tr><td colSpan={3} className="py-12 text-center text-gray-400 text-sm">No project data available.</td></tr>
+                <tr><td colSpan={4} className="py-12 text-center text-gray-400 text-sm">No project data available.</td></tr>
               )}
             </tbody>
           </table>

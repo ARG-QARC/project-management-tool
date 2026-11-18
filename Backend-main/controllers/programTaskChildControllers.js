@@ -3,19 +3,19 @@ const pool = require("../config/db");
 
 const MANAGEMENT_ROLES = [
     "Project Manager",
+    "Task Manager",
     "Executive Manager",
     "System Administrator",
 ];
 const isManagementRole = (r) => MANAGEMENT_ROLES.includes(r);
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const ALLOWED_MIME_TYPES = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/plain",
+const ALLOWED_EXTENSIONS = [
+    "pdf", "doc", "docx", "txt", "rtf", "md",
+    "csv", "xls", "xlsx", "ppt", "pptx",
+    "png", "jpg", "jpeg", "webp", "gif", "svg",
+    "zip", "rar", "7z", "json", "mp4", "mp3", "wav"
 ];
-const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx", "txt"];
 
 const safeQuery = async (text, params) => {
     const c = await pool.connect();
@@ -179,12 +179,9 @@ const uploadProgramTaskAttachment = async (req, res) => {
         if (size > MAX_FILE_SIZE) {
             return res.status(400).json({ success: false, message: "File exceeds 10 MB." });
         }
-        const ext = originalname.split(".").pop().toLowerCase();
+        const ext = originalname.includes(".") ? originalname.split(".").pop().toLowerCase() : "bin";
         if (!ALLOWED_EXTENSIONS.includes(ext)) {
-            return res.status(400).json({ success: false, message: "Bad extension." });
-        }
-        if (!ALLOWED_MIME_TYPES.includes(mimetype)) {
-            return res.status(400).json({ success: false, message: "Bad MIME." });
+            return res.status(400).json({ success: false, message: `Invalid file extension (.${ext}).` });
         }
 
         const r = await safeQuery(
