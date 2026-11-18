@@ -53,7 +53,9 @@ const getProjects = async (req, res) => {
                 END AS status,
                 p.priority,
                 p.start_date,
+                p.start_time,
                 p.deadline,
+                p.deadline_time,
                 CASE 
                     WHEN COALESCE(tc.total_tasks, 0) = 0 THEN 0
                     ELSE ROUND((tc.completed_tasks::numeric / tc.total_tasks::numeric) * 100)::integer
@@ -198,7 +200,11 @@ const createProject = async (req, res) => {
             about_description,
             startDate,
             start_date,
+            startTime,
+            start_time,
             deadline,
+            deadlineTime,
+            deadline_time,
             priority,
             status,
             programId,
@@ -206,6 +212,8 @@ const createProject = async (req, res) => {
         } = req.body;
         
         const finalStartDate = startDate || start_date;
+        const finalStartTime = startTime || start_time || "09:00";
+        const finalDeadlineTime = deadlineTime || deadline_time || "17:00";
         const finalAboutTitle = aboutTitle || about_title;
         const finalAboutDescription = aboutDescription || about_description;
         const finalProgramId = programId || program_id;
@@ -230,13 +238,15 @@ const createProject = async (req, res) => {
                 about_title,
                 about_description,
                 start_date,
+                start_time,
                 deadline,
+                deadline_time,
                 priority,
                 program_id,
                 created_by
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
             )
             RETURNING *
             `,
@@ -247,7 +257,9 @@ const createProject = async (req, res) => {
                 finalAboutTitle || null,
                 finalAboutDescription || null,
                 finalStartDate || null,
+                finalStartTime,
                 deadline || null,
+                finalDeadlineTime,
                 priority || "Medium",
                 finalProgramId || null,
                 req.user.id
@@ -261,9 +273,9 @@ const createProject = async (req, res) => {
                     `
                     INSERT INTO program_projects (
                         id, program_id, name, domain, about_title, about_description,
-                        start_date, deadline, priority, assigned_to, status, created_by
+                        start_date, start_time, deadline, deadline_time, priority, assigned_to, status, created_by
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                     ON CONFLICT (id) DO UPDATE SET
                         program_id = EXCLUDED.program_id,
                         name = EXCLUDED.name,
@@ -271,7 +283,9 @@ const createProject = async (req, res) => {
                         about_title = EXCLUDED.about_title,
                         about_description = EXCLUDED.about_description,
                         start_date = EXCLUDED.start_date,
+                        start_time = EXCLUDED.start_time,
                         deadline = EXCLUDED.deadline,
+                        deadline_time = EXCLUDED.deadline_time,
                         priority = EXCLUDED.priority
                     `,
                     [
@@ -282,7 +296,9 @@ const createProject = async (req, res) => {
                         finalAboutTitle || null,
                         finalAboutDescription || null,
                         finalStartDate || null,
+                        finalStartTime,
                         deadline || null,
+                        finalDeadlineTime,
                         priority || "Medium",
                         req.user.id,
                         "In Progress",

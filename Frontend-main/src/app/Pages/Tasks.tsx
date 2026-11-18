@@ -29,7 +29,9 @@ type Task = {
   assignee_name?: string;
   assignee_email?: string;
   start_date?: string;
+  start_time?: string;
   due_date?: string;
+  due_time?: string;
   created_at?: string;
   work_parts_count?: number;
   submissions_count?: number;
@@ -168,7 +170,9 @@ export default function Tasks() {
     priority: "Medium" as Priority,
     status: "To Do" as TaskStatus,
     startDate: "",
+    startTime: "09:00",
     dueDate: "",
+    dueTime: "17:00",
   });
   const [initialFile, setInitialFile] = useState<File | null>(null);
 
@@ -268,7 +272,9 @@ export default function Tasks() {
             assignee_name: t.assignee_name || t.assignee?.full_name || undefined,
             assignee_email: t.assignee_email || t.assignee?.email || undefined,
             start_date: t.start_date || t.startDate || "",
+            start_time: t.start_time || t.startTime || "09:00",
             due_date: t.due_date || t.dueDate || "",
+            due_time: t.due_time || t.dueTime || "17:00",
             created_at: t.created_at || t.createdAt || "",
           }));
         } else {
@@ -312,7 +318,9 @@ export default function Tasks() {
             assignee_name: t.assignee_name || t.assignee?.full_name || undefined,
             assignee_email: t.assignee_email || t.assignee?.email || undefined,
             start_date: t.start_date || t.startDate || "",
+            start_time: t.start_time || t.startTime || "09:00",
             due_date: t.due_date || t.dueDate || "",
+            due_time: t.due_time || t.dueTime || "17:00",
             created_at: t.created_at || t.createdAt || "",
           }));
         }
@@ -468,6 +476,10 @@ export default function Tasks() {
       setCreateError("Task title is required");
       return;
     }
+    if (!taskForm.startDate || !taskForm.startTime || !taskForm.dueDate || !taskForm.dueTime) {
+      setCreateError("Start date, start time, due date, and due time are compulsory.");
+      return;
+    }
     const effectiveProjectId = (taskForm.projectId && taskForm.projectId !== "standalone") ? taskForm.projectId : null;
 
     setCreating(true);
@@ -495,8 +507,10 @@ export default function Tasks() {
           assigneeId: taskForm.assigneeId || null,
           projectId: effectiveProjectId,
           projectManagerId: user?.id,
-          startDate: taskForm.startDate || null,
-          dueDate: taskForm.dueDate || null,
+          startDate: taskForm.startDate,
+          startTime: taskForm.startTime,
+          dueDate: taskForm.dueDate,
+          dueTime: taskForm.dueTime,
         }),
       });
 
@@ -525,7 +539,9 @@ export default function Tasks() {
         priority: "Medium",
         status: "To Do",
         startDate: "",
+        startTime: "09:00",
         dueDate: "",
+        dueTime: "17:00",
       });
       setInitialFile(null);
       
@@ -538,7 +554,10 @@ export default function Tasks() {
            status: taskForm.status,
            priority: taskForm.priority,
            assignee_id: taskForm.assigneeId,
-           due_date: taskForm.dueDate
+           start_date: taskForm.startDate,
+           start_time: taskForm.startTime,
+           due_date: taskForm.dueDate,
+           due_time: taskForm.dueTime,
         } : null);
       }
       
@@ -1185,8 +1204,10 @@ export default function Tasks() {
                         assigneeId: selectedTask.assignee_id || "",
                         priority: (selectedTask.priority as Priority) || "Medium",
                         status: (selectedTask.status as TaskStatus) || "To Do",
-                        startDate: "",
+                        startDate: selectedTask.start_date ? new Date(selectedTask.start_date).toISOString().split('T')[0] : "",
+                        startTime: selectedTask.start_time || "09:00",
                         dueDate: selectedTask.due_date ? new Date(selectedTask.due_date).toISOString().split('T')[0] : "",
+                        dueTime: selectedTask.due_time || "17:00",
                       });
                       setIsTaskModalOpen(true);
                     }}
@@ -1278,8 +1299,22 @@ export default function Tasks() {
                     <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
                       <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Timeline</span>
                       <div className="mt-2 space-y-1 text-xs font-semibold text-slate-700">
-                        <p>Start: <span className="font-normal text-slate-500">{selectedTask.start_date || "Immediate"}</span></p>
-                        <p>Due: <span className="font-normal text-slate-500">{selectedTask.due_date || "No deadline"}</span></p>
+                        <p>
+                          Start:{" "}
+                          <span className="font-normal text-slate-500">
+                            {selectedTask.start_date
+                              ? `${String(selectedTask.start_date).split("T")[0]} at ${selectedTask.start_time || "09:00"}`
+                              : "Immediate"}
+                          </span>
+                        </p>
+                        <p>
+                          Due:{" "}
+                          <span className="font-normal text-slate-500">
+                            {selectedTask.due_date
+                              ? `${String(selectedTask.due_date).split("T")[0]} at ${selectedTask.due_time || "17:00"}`
+                              : "No deadline"}
+                          </span>
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1669,9 +1704,10 @@ export default function Tasks() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                    Start Date
+                    Start Date *
                   </label>
                   <input
+                    required
                     type="date"
                     value={taskForm.startDate}
                     onChange={e => setTaskForm({ ...taskForm, startDate: e.target.value })}
@@ -1681,12 +1717,41 @@ export default function Tasks() {
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                    Due Date
+                    Start Time *
                   </label>
                   <input
+                    required
+                    type="time"
+                    value={taskForm.startTime}
+                    onChange={e => setTaskForm({ ...taskForm, startTime: e.target.value })}
+                    className="w-full text-sm border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Due Date *
+                  </label>
+                  <input
+                    required
                     type="date"
                     value={taskForm.dueDate}
                     onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                    className="w-full text-sm border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Due Time *
+                  </label>
+                  <input
+                    required
+                    type="time"
+                    value={taskForm.dueTime}
+                    onChange={e => setTaskForm({ ...taskForm, dueTime: e.target.value })}
                     className="w-full text-sm border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>

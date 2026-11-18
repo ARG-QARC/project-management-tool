@@ -233,7 +233,9 @@ export default function Programs() {
     description: "",
     domain: "",
     startDate: "",
+    startTime: "09:00",
     endDate: "",
+    endTime: "17:00",
     priority: "High" as ProgramPriority,
   });
   const [savingProgram, setSavingProgram] = useState(false);
@@ -245,7 +247,9 @@ export default function Programs() {
     aboutTitle: "",
     aboutDescription: "",
     startDate: "",
+    startTime: "09:00",
     deadline: "",
+    deadlineTime: "17:00",
     priority: "Medium" as ProgramPriority,
     assignedTo: "",
   });
@@ -440,7 +444,9 @@ export default function Programs() {
           description: pForm.description.trim() || null,
           domain: pForm.domain.trim() || null,
           startDate: pForm.startDate || null,
+          startTime: pForm.startTime || "09:00",
           endDate: pForm.endDate || null,
+          endTime: pForm.endTime || "17:00",
           priority: pForm.priority,
         }),
       });
@@ -451,7 +457,9 @@ export default function Programs() {
           description: "",
           domain: "",
           startDate: "",
+          startTime: "09:00",
           endDate: "",
+          endTime: "17:00",
           priority: "High",
         });
         await fetchPrograms();
@@ -484,7 +492,9 @@ export default function Programs() {
             aboutTitle: prForm.aboutTitle.trim() || null,
             aboutDescription: prForm.aboutDescription.trim() || null,
             startDate: prForm.startDate || null,
+            startTime: prForm.startTime || "09:00",
             deadline: prForm.deadline || null,
+            deadlineTime: prForm.deadlineTime || "17:00",
             priority: prForm.priority,
             assignedTo: prForm.assignedTo || null,
           }),
@@ -498,7 +508,9 @@ export default function Programs() {
           aboutTitle: "",
           aboutDescription: "",
           startDate: "",
+          startTime: "09:00",
           deadline: "",
+          deadlineTime: "17:00",
           priority: "Medium",
           assignedTo: "",
         });
@@ -1325,9 +1337,10 @@ export default function Programs() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                      Start Date
+                      Start Date *
                     </label>
                     <input
+                      required
                       type="date"
                       value={pForm.startDate}
                       onChange={(e) => setPForm({ ...pForm, startDate: e.target.value })}
@@ -1337,12 +1350,41 @@ export default function Programs() {
 
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                      Target End Date
+                      Start Time *
                     </label>
                     <input
+                      required
+                      type="time"
+                      value={pForm.startTime}
+                      onChange={(e) => setPForm({ ...pForm, startTime: e.target.value })}
+                      className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                      Target End Date *
+                    </label>
+                    <input
+                      required
                       type="date"
                       value={pForm.endDate}
                       onChange={(e) => setPForm({ ...pForm, endDate: e.target.value })}
+                      className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                      Target End Time *
+                    </label>
+                    <input
+                      required
+                      type="time"
+                      value={pForm.endTime}
+                      onChange={(e) => setPForm({ ...pForm, endTime: e.target.value })}
                       className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
                     />
                   </div>
@@ -1452,9 +1494,10 @@ export default function Programs() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                      Start Date
+                      Start Date *
                     </label>
                     <input
+                      required
                       type="date"
                       value={prForm.startDate}
                       onChange={(e) => setPrForm({ ...prForm, startDate: e.target.value })}
@@ -1464,12 +1507,41 @@ export default function Programs() {
 
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                      Deadline
+                      Start Time *
                     </label>
                     <input
+                      required
+                      type="time"
+                      value={prForm.startTime}
+                      onChange={(e) => setPrForm({ ...prForm, startTime: e.target.value })}
+                      className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                      Deadline Date *
+                    </label>
+                    <input
+                      required
                       type="date"
                       value={prForm.deadline}
                       onChange={(e) => setPrForm({ ...prForm, deadline: e.target.value })}
+                      className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                      Deadline Time *
+                    </label>
+                    <input
+                      required
+                      type="time"
+                      value={prForm.deadlineTime}
+                      onChange={(e) => setPrForm({ ...prForm, deadlineTime: e.target.value })}
                       className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
                     />
                   </div>

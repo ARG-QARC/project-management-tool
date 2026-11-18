@@ -105,7 +105,9 @@ export default function ProgramsView({
     description: "",
     domain: "",
     startDate: "",
+    startTime: "09:00",
     endDate: "",
+    endTime: "17:00",
     priority: "Medium" as ProgramPriority,
   });
   const [savingProgram, setSavingProgram] = useState(false);
@@ -117,7 +119,9 @@ export default function ProgramsView({
     aboutTitle: "",
     aboutDescription: "",
     startDate: "",
+    startTime: "09:00",
     deadline: "",
+    deadlineTime: "17:00",
     priority: "Medium" as ProgramPriority,
     assignedTo: "",
   });
@@ -256,7 +260,7 @@ export default function ProgramsView({
       });
       if (res.ok) {
         setCreateProgramOpen(false);
-        setPForm({ name: "", description: "", domain: "", startDate: "", endDate: "", priority: "Medium" });
+        setPForm({ name: "", description: "", domain: "", startDate: "", startTime: "09:00", endDate: "", endTime: "17:00", priority: "Medium" });
         fetchPrograms();
         window.dispatchEvent(new Event("programsUpdated"));
       }
@@ -281,7 +285,9 @@ export default function ProgramsView({
           aboutTitle: prForm.aboutTitle.trim() || null,
           aboutDescription: prForm.aboutDescription.trim() || null,
           startDate: prForm.startDate || null,
+          startTime: prForm.startTime || "09:00",
           deadline: prForm.deadline || null,
+          deadlineTime: prForm.deadlineTime || "17:00",
           priority: prForm.priority,
           assignedTo: prForm.assignedTo || null,
         }),
@@ -290,7 +296,7 @@ export default function ProgramsView({
         setCreateProjectOpen(false);
         setPrForm({
           name: "", domain: "", aboutTitle: "", aboutDescription: "",
-          startDate: "", deadline: "", priority: "Medium", assignedTo: ""
+          startDate: "", startTime: "09:00", deadline: "", deadlineTime: "17:00", priority: "Medium", assignedTo: ""
         });
         fetchProgramDetails(activeProgram.id);
         fetchPrograms();
@@ -703,9 +709,10 @@ export default function ProgramsView({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Start Date
+                    Start Date *
                   </label>
                   <input
+                    required
                     type="date"
                     value={pForm.startDate}
                     onChange={e => setPForm({ ...pForm, startDate: e.target.value })}
@@ -714,12 +721,39 @@ export default function ProgramsView({
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Target End Date
+                    Start Time *
                   </label>
                   <input
+                    required
+                    type="time"
+                    value={pForm.startTime}
+                    onChange={e => setPForm({ ...pForm, startTime: e.target.value })}
+                    className="w-full text-xs border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Target End Date *
+                  </label>
+                  <input
+                    required
                     type="date"
                     value={pForm.endDate}
                     onChange={e => setPForm({ ...pForm, endDate: e.target.value })}
+                    className="w-full text-xs border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Target End Time *
+                  </label>
+                  <input
+                    required
+                    type="time"
+                    value={pForm.endTime}
+                    onChange={e => setPForm({ ...pForm, endTime: e.target.value })}
                     className="w-full text-xs border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
@@ -814,9 +848,10 @@ export default function ProgramsView({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Start Date
+                    Start Date *
                   </label>
                   <input
+                    required
                     type="date"
                     value={prForm.startDate}
                     onChange={e => setPrForm({ ...prForm, startDate: e.target.value })}
@@ -825,12 +860,39 @@ export default function ProgramsView({
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Deadline
+                    Start Time *
                   </label>
                   <input
+                    required
+                    type="time"
+                    value={prForm.startTime}
+                    onChange={e => setPrForm({ ...prForm, startTime: e.target.value })}
+                    className="w-full text-xs border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Deadline Date *
+                  </label>
+                  <input
+                    required
                     type="date"
                     value={prForm.deadline}
                     onChange={e => setPrForm({ ...prForm, deadline: e.target.value })}
+                    className="w-full text-xs border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Deadline Time *
+                  </label>
+                  <input
+                    required
+                    type="time"
+                    value={prForm.deadlineTime}
+                    onChange={e => setPrForm({ ...prForm, deadlineTime: e.target.value })}
                     className="w-full text-xs border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>

@@ -49,7 +49,9 @@ const getProjectTasks = async (req, res) => {
                 t.priority,
                 t.assignee_id,
                 t.start_date,
+                t.start_time,
                 t.due_date,
+                t.due_time,
                 t.created_by,
                 t.created_at,
                 t.updated_at,
@@ -105,7 +107,9 @@ const getTask = async (req, res) => {
                 t.priority,
                 t.assignee_id,
                 t.start_date,
+                t.start_time,
                 t.due_date,
+                t.due_time,
                 t.created_by,
                 t.created_at,
                 t.updated_at,
@@ -157,9 +161,26 @@ const createTask = async (req, res) => {
         const effectiveProjectId = (rawProjectId && rawProjectId !== 'standalone' && rawProjectId !== 'none' && rawProjectId !== 'null')
             ? rawProjectId.trim()
             : null;
-        const { name, description, status, priority, assigneeId, startDate, dueDate } = req.body;
+        const {
+            name,
+            description,
+            status,
+            priority,
+            assigneeId,
+            startDate,
+            startTime,
+            start_time,
+            dueDate,
+            dueTime,
+            due_time
+        } = req.body;
         const userId = req.user.id;
         const userRole = req.user.role;
+
+        const finalStartDate = startDate ? String(startDate).split("T")[0] : null;
+        const finalStartTime = startTime || start_time || (startDate && String(startDate).includes("T") ? String(startDate).split("T")[1].slice(0, 5) : null);
+        const finalDueDate = dueDate ? String(dueDate).split("T")[0] : null;
+        const finalDueTime = dueTime || due_time || (dueDate && String(dueDate).includes("T") ? String(dueDate).split("T")[1].slice(0, 5) : null);
 
         console.log('🔍 Creating task:', { effectiveProjectId, name, assigneeId, user: userId, role: userRole });
 
@@ -167,6 +188,13 @@ const createTask = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Task name is required."
+            });
+        }
+
+        if (!finalStartDate || !finalStartTime || !finalDueDate || !finalDueTime) {
+            return res.status(400).json({
+                success: false,
+                message: "Start date, start time, due date, and due time are compulsory."
             });
         }
 
@@ -275,10 +303,12 @@ const createTask = async (req, res) => {
                 assignee_id,
                 assigned_to,
                 start_date,
+                start_time,
                 due_date,
+                due_time,
                 created_by
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING 
                 id,
                 project_id,
@@ -290,7 +320,9 @@ const createTask = async (req, res) => {
                 assignee_id,
                 assigned_to,
                 start_date,
+                start_time,
                 due_date,
+                due_time,
                 created_by,
                 created_at,
                 updated_at
@@ -305,8 +337,10 @@ const createTask = async (req, res) => {
                 priority || "Medium",
                 assigneeId || null,
                 assigneeId || null,
-                startDate || null,
-                dueDate || null,
+                finalStartDate,
+                finalStartTime,
+                finalDueDate,
+                finalDueTime,
                 userId
             ]
         );
@@ -343,8 +377,22 @@ const createTask = async (req, res) => {
 const updateTask = async (req, res) => {
     try {
         const { taskId } = req.params;
-        const { name, description, status, priority, assigneeId, startDate, dueDate } = req.body;
+        const {
+            name,
+            description,
+            status,
+            priority,
+            assigneeId,
+            startDate,
+            startTime,
+            start_time,
+            dueDate,
+            dueTime,
+            due_time
+        } = req.body;
         const userId = req.user.id;
+        const finalStartTime = startTime !== undefined ? startTime : start_time;
+        const finalDueTime = dueTime !== undefined ? dueTime : due_time;
 
         console.log('🔍 Updating task:', { taskId, name, status, user: userId });
 
@@ -441,11 +489,19 @@ const updateTask = async (req, res) => {
         }
         if (startDate !== undefined) {
             updates.push(`start_date = $${paramIndex++}`);
-            values.push(startDate);
+            values.push(startDate ? String(startDate).split("T")[0] : null);
+        }
+        if (finalStartTime !== undefined) {
+            updates.push(`start_time = $${paramIndex++}`);
+            values.push(finalStartTime);
         }
         if (dueDate !== undefined) {
             updates.push(`due_date = $${paramIndex++}`);
-            values.push(dueDate);
+            values.push(dueDate ? String(dueDate).split("T")[0] : null);
+        }
+        if (finalDueTime !== undefined) {
+            updates.push(`due_time = $${paramIndex++}`);
+            values.push(finalDueTime);
         }
 
         if (updates.length === 0) {
@@ -924,7 +980,9 @@ const getMyTasks = async (req, res) => {
                 t.priority,
                 t.assignee_id,
                 t.start_date,
+                t.start_time,
                 t.due_date,
+                t.due_time,
                 t.created_by,
                 t.created_at,
                 t.updated_at,
@@ -1107,7 +1165,9 @@ const getTasks = async (req, res) => {
                 t.priority,
                 t.assignee_id,
                 t.start_date,
+                t.start_time,
                 t.due_date,
+                t.due_time,
                 t.created_by,
                 t.created_at,
                 t.updated_at,

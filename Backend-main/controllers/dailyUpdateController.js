@@ -94,7 +94,7 @@ const createUpdate = async (req, res) => {
 const updateUpdate = async (req, res) => {
   try {
     const updateId = req.params.id;
-    const { content, kpi_score } = req.body;
+    const { content, kpi_score, clientDate } = req.body;
 
     // Check ownership
     const checkQuery = `SELECT * FROM daily_updates WHERE id = $1`;
@@ -109,6 +109,29 @@ const updateUpdate = async (req, res) => {
     // Only owner can update content, managers can update KPI
     if (!isManagementRole(req.user.role) && req.user.id !== updateRecord.user_id) {
       return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    // Enforce same-day restriction when editing content
+    if (content !== undefined) {
+      const recordDateStr = updateRecord.date instanceof Date
+        ? updateRecord.date.toISOString().split("T")[0]
+        : String(updateRecord.date || "").split("T")[0];
+
+      const now = new Date();
+      const utcToday = now.toISOString().split("T")[0];
+      const pktToday = new Date(now.getTime() + 5 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const allowedDates = new Set([utcToday, pktToday]);
+      if (clientDate && typeof clientDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(clientDate)) {
+        // Only trust clientDate if within +/- 14 hours of server UTC
+        const diffHours = Math.abs(now.getTime() - new Date(`${clientDate}T12:00:00Z`).getTime()) / 3600000;
+        if (diffHours <= 26) allowedDates.add(clientDate);
+      }
+
+      if (!allowedDates.has(recordDateStr)) {
+        return res.status(403).json({
+          error: "Daily updates can only be edited on the same day they were posted. Editing is locked on the next day."
+        });
+      }
     }
 
     const newContent = content !== undefined ? content : updateRecord.content;

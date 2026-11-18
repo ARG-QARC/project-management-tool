@@ -114,7 +114,7 @@ export default function Projects() {
   const [previewProject, setPreviewProject] = useState<{ id: string; name: string; domain?: string } | null>(null);
   const [form, setForm] = useState({
     name: "", domain: "", aboutTitle: "", aboutDescription: "",
-    startDate: "", deadline: "", priority: "Medium", programId: "",
+    startDate: "", startTime: "09:00", deadline: "", deadlineTime: "17:00", priority: "Medium", programId: "",
   });
 
   // Sync default programId in form when selectedProgram changes
@@ -223,7 +223,7 @@ export default function Projects() {
       setIsModalOpen(false);
       setForm({
         name: "", domain: "", aboutTitle: "", aboutDescription: "",
-        startDate: "", deadline: "", priority: "Medium",
+        startDate: "", startTime: "09:00", deadline: "", deadlineTime: "17:00", priority: "Medium",
         programId: selectedProgram?.id || "",
       });
       fetchProjects();
@@ -629,18 +629,37 @@ export default function Projects() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5">Start Date</label>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5">Start Date *</label>
                   <div className="relative">
                     <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    <input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })}
+                    <input required type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })}
                       className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5">Deadline</label>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5">Start Time *</label>
+                  <div className="relative">
+                    <Clock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input required type="time" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5">Deadline Date *</label>
                   <div className="relative">
                     <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    <input type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })}
+                    <input required type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5">Deadline Time *</label>
+                  <div className="relative">
+                    <Clock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input required type="time" value={form.deadlineTime} onChange={e => setForm({ ...form, deadlineTime: e.target.value })}
                       className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all" />
                   </div>
                 </div>

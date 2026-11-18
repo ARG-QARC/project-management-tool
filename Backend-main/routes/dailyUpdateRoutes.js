@@ -26,6 +26,7 @@ router.post("/", createUpdate);
 
 // Update an existing update
 router.put("/:id", updateUpdate);
+router.patch("/:id", updateUpdate);
 
 // Delete an update
 router.delete("/:id", deleteUpdate);

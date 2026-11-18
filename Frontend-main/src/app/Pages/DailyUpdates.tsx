@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Sparkles, Plus, Clock, User, MessageSquare,
-  Calendar, Send, AlertCircle, Activity, LayoutList, Search, Filter
+  Calendar, Send, AlertCircle, Activity, LayoutList, Search, Filter,
+  Edit2, Check, X, Lock
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { API_BASE } from "@/lib/api";
@@ -16,6 +17,7 @@ type DailyUpdate = {
   date: string;
   content: string;
   created_at: string;
+  updated_at?: string;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -38,14 +40,41 @@ function getInitials(name?: string) {
   return name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
 }
 
+function getLocalTodayStr() {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function normalizeDateOnly(dateStr?: string) {
+  if (!dateStr) return "";
+  return String(dateStr).split("T")[0];
+}
+
+function isSameDayUpdate(dateStr?: string) {
+  const d = normalizeDateOnly(dateStr);
+  if (!d) return false;
+  const localToday = getLocalTodayStr();
+  const utcToday = new Date().toISOString().split("T")[0];
+  return d === localToday || d === utcToday;
+}
+
+function formatTime(isoStr?: string) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function formatDate(dateStr: string) {
-  const date = new Date(dateStr);
-  const today = new Date();
-  
-  if (date.toDateString() === today.toDateString()) {
+  if (isSameDayUpdate(dateStr)) {
     return "Today";
   }
-  
+  const date = new Date(dateStr);
+  const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) {
@@ -67,6 +96,11 @@ export default function DailyUpdates() {
   const [newContent, setNewContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Edit States (same-day only)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
   // Filter States
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("");
@@ -85,7 +119,7 @@ export default function DailyUpdates() {
   const fetchUpdates = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("token") || localStorage.getItem("accessToken");
       const url = isManager 
         ? `${API_BASE}/daily-updates` 
         : `${API_BASE}/daily-updates/user/${user?.id}`;
@@ -111,8 +145,8 @@ export default function DailyUpdates() {
     
     try {
       setSubmitting(true);
-      const token = localStorage.getItem("token");
-      const today = new Date().toISOString().split('T')[0];
+      const token = localStorage.getItem("token") || localStorage.getItem("accessToken");
+      const today = getLocalTodayStr();
       
       const res = await fetch(`${API_BASE}/daily-updates`, {
         method: "POST",
@@ -134,6 +168,41 @@ export default function DailyUpdates() {
       alert(err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSaveEdit = async (update: DailyUpdate) => {
+    if (!editContent.trim()) return;
+    if (!isSameDayUpdate(update.date)) {
+      alert("Daily updates can only be edited on the same day they were posted.");
+      setEditingId(null);
+      return;
+    }
+    try {
+      setSavingEdit(true);
+      const token = localStorage.getItem("token") || localStorage.getItem("accessToken");
+      const res = await fetch(`${API_BASE}/daily-updates/${update.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          content: editContent.trim(),
+          clientDate: getLocalTodayStr(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || data.message || "Failed to update daily log");
+      }
+      setEditingId(null);
+      setEditContent("");
+      fetchUpdates();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -337,33 +406,101 @@ export default function DailyUpdates() {
           )}
 
           <div className="space-y-4">
-            {filteredUpdates.map((update) => (
-              <div 
-                key={update.id} 
-                className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 hover:shadow-lg hover:border-indigo-100 transition-all duration-300 group flex gap-4 md:gap-5"
-              >
-                {/* Avatar */}
-                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-sm md:text-base bg-gradient-to-br ${avatarGrad(update.user_name || "User")} shadow-inner`}>
-                  {getInitials(update.user_name || "User")}
-                </div>
+            {filteredUpdates.map((update) => {
+              const isOwnerOrMgr = isManager || String(update.user_id) === String(user?.id);
+              const sameDay = isSameDayUpdate(update.date);
+              const isEditing = editingId === update.id;
+              const timeStr = formatTime(update.created_at);
+              return (
+                <div 
+                  key={update.id} 
+                  className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 hover:shadow-lg hover:border-indigo-100 transition-all duration-300 group flex gap-4 md:gap-5"
+                >
+                  {/* Avatar */}
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-sm md:text-base bg-gradient-to-br ${avatarGrad(update.user_name || "User")} shadow-inner`}>
+                    {getInitials(update.user_name || "User")}
+                  </div>
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
-                    <h3 className="font-bold text-slate-900 truncate text-base">
-                      {update.user_name || "Team Member"}
-                    </h3>
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider bg-slate-100/80 px-2.5 py-1 rounded-full w-fit">
-                      <Calendar size={12} className="text-indigo-500" />
-                      {formatDate(update.date)}
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+                      <h3 className="font-bold text-slate-900 truncate text-base">
+                        {update.user_name || "Team Member"}
+                      </h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider bg-slate-100/80 px-2.5 py-1 rounded-full w-fit">
+                          <Calendar size={12} className="text-indigo-500" />
+                          {formatDate(update.date)}
+                          {timeStr && (
+                            <span className="text-slate-400 font-semibold ml-1 flex items-center gap-1">
+                              • <Clock size={11} /> {timeStr}
+                            </span>
+                          )}
+                        </div>
+
+                        {isOwnerOrMgr && !isEditing && (
+                          sameDay ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingId(update.id);
+                                setEditContent(update.content);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 transition-colors cursor-pointer"
+                              title="Edit today's update"
+                            >
+                              <Edit2 size={11} /> Edit
+                            </button>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-400 border border-slate-200/70"
+                              title="Daily updates can only be edited on the same day they were posted"
+                            >
+                              <Lock size={10} /> Locked
+                            </span>
+                          )
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-sm md:text-[15px] text-slate-700 whitespace-pre-wrap leading-relaxed">
-                    {update.content}
+
+                    {isEditing ? (
+                      <div className="space-y-3 mt-2">
+                        <textarea
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          rows={4}
+                          className="w-full rounded-2xl border border-indigo-300 bg-indigo-50/20 p-3.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:bg-white transition-all resize-y"
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingId(null);
+                              setEditContent("");
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+                          >
+                            <X size={13} /> Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingEdit || !editContent.trim()}
+                            onClick={() => handleSaveEdit(update)}
+                            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+                          >
+                            <Check size={13} /> {savingEdit ? "Saving..." : "Save Changes"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm md:text-[15px] text-slate-700 whitespace-pre-wrap leading-relaxed">
+                        {update.content}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
         </div>

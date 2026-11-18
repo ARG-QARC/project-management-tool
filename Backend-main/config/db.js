@@ -209,8 +209,18 @@ async function initDatabase(poolInstance) {
         );
       
 
-        -- Migrations for remarks and task status
+        -- Migrations for remarks, task status, and compulsory time fields
         ALTER TABLE users ADD COLUMN IF NOT EXISTS remarks TEXT DEFAULT '';
+        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT '09:00';
+        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_time TEXT DEFAULT '17:00';
+        ALTER TABLE projects ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT '09:00';
+        ALTER TABLE projects ADD COLUMN IF NOT EXISTS deadline_time TEXT DEFAULT '17:00';
+        ALTER TABLE program_projects ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT '09:00';
+        ALTER TABLE program_projects ADD COLUMN IF NOT EXISTS deadline_time TEXT DEFAULT '17:00';
+        ALTER TABLE programs ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT '09:00';
+        ALTER TABLE programs ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT '17:00';
+        ALTER TABLE program_project_tasks ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT '09:00';
+        ALTER TABLE program_project_tasks ADD COLUMN IF NOT EXISTS due_time TEXT DEFAULT '17:00';
         UPDATE tasks SET status = 'Completed' WHERE status = 'Done';
         UPDATE program_project_tasks SET status = 'Completed' WHERE status = 'Done';
 `);
