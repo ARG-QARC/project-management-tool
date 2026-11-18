@@ -136,14 +136,21 @@ const updateUpdate = async (req, res) => {
 
     const newContent = content !== undefined ? content : updateRecord.content;
     const newKpi = kpi_score !== undefined ? kpi_score : updateRecord.kpi_score;
+    const isContentEdited = content !== undefined && content.trim() !== String(updateRecord.content || "").trim();
+
+    await pool.query(`ALTER TABLE daily_updates ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE`).catch(() => {});
 
     const query = `
       UPDATE daily_updates
-      SET content = $1, kpi_score = $2, updated_at = NOW()
+      SET
+        content = $1,
+        kpi_score = $2,
+        updated_at = NOW(),
+        edited_at = CASE WHEN $4 = TRUE THEN NOW() ELSE COALESCE(edited_at, NOW()) END
       WHERE id = $3
       RETURNING *
     `;
-    const result = await pool.query(query, [newContent, newKpi, updateId]);
+    const result = await pool.query(query, [newContent, newKpi, updateId, isContentEdited]);
     res.json(result.rows[0]);
   } catch (error) {
     console.error("Error updating daily update:", error);

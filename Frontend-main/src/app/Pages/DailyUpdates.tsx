@@ -18,6 +18,7 @@ type DailyUpdate = {
   content: string;
   created_at: string;
   updated_at?: string;
+  edited_at?: string | null;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -62,11 +63,27 @@ function isSameDayUpdate(dateStr?: string) {
   return d === localToday || d === utcToday;
 }
 
-function formatTime(isoStr?: string) {
+function formatTime(isoStr?: string | null) {
   if (!isoStr) return "";
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatFullDateTime(isoStr?: string | null) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return "";
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} at ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function getEditedTimestamp(update: DailyUpdate): string | null {
+  if (update.edited_at) return update.edited_at;
+  if (update.updated_at && update.created_at) {
+    const diff = new Date(update.updated_at).getTime() - new Date(update.created_at).getTime();
+    if (diff > 1500) return update.updated_at;
+  }
+  return null;
 }
 
 function formatDate(dateStr: string) {
@@ -411,6 +428,9 @@ export default function DailyUpdates() {
               const sameDay = isSameDayUpdate(update.date);
               const isEditing = editingId === update.id;
               const timeStr = formatTime(update.created_at);
+              const editedIso = getEditedTimestamp(update);
+              const editedTimeStr = formatTime(editedIso);
+              const editedFullStr = formatFullDateTime(editedIso);
               return (
                 <div 
                   key={update.id} 
@@ -432,11 +452,20 @@ export default function DailyUpdates() {
                           <Calendar size={12} className="text-indigo-500" />
                           {formatDate(update.date)}
                           {timeStr && (
-                            <span className="text-slate-400 font-semibold ml-1 flex items-center gap-1">
-                              • <Clock size={11} /> {timeStr}
+                            <span className="text-slate-500 font-semibold ml-1 flex items-center gap-1">
+                              • <Clock size={11} className="text-indigo-500" /> {timeStr}
                             </span>
                           )}
                         </div>
+
+                        {editedIso && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80"
+                            title={`Edited on ${editedFullStr}`}
+                          >
+                            <Edit2 size={10} /> Edited • {editedTimeStr}
+                          </span>
+                        )}
 
                         {isOwnerOrMgr && !isEditing && (
                           sameDay ? (
@@ -493,8 +522,16 @@ export default function DailyUpdates() {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-sm md:text-[15px] text-slate-700 whitespace-pre-wrap leading-relaxed">
-                        {update.content}
+                      <div>
+                        <div className="text-sm md:text-[15px] text-slate-700 whitespace-pre-wrap leading-relaxed">
+                          {update.content}
+                        </div>
+                        {editedIso && (
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[11px] font-medium text-amber-700">
+                            <Clock size={11} />
+                            <span>Last edited on {editedFullStr}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
