@@ -54,7 +54,11 @@ const getPrograms = async (req, res) => {
                         program_id,
                         COUNT(*) AS project_count,
                         COUNT(*) FILTER (WHERE status IN ('Completed', 'Done')) AS completed_count
-                    FROM program_projects
+                    FROM (
+                        SELECT id, program_id, status FROM program_projects WHERE program_id IS NOT NULL
+                        UNION
+                        SELECT id, program_id, status FROM projects WHERE program_id IS NOT NULL AND id NOT IN (SELECT id FROM program_projects)
+                    ) combined_projects
                     GROUP BY program_id
                 ) pc ON pc.program_id = p.id
                 ORDER BY p.created_at DESC
@@ -84,7 +88,11 @@ const getPrograms = async (req, res) => {
                     program_id,
                     COUNT(*) AS project_count,
                     COUNT(*) FILTER (WHERE status IN ('Completed', 'Done')) AS completed_count
-                FROM program_projects
+                FROM (
+                    SELECT id, program_id, status FROM program_projects WHERE program_id IS NOT NULL
+                    UNION
+                    SELECT id, program_id, status FROM projects WHERE program_id IS NOT NULL AND id NOT IN (SELECT id FROM program_projects)
+                ) combined_projects
                 GROUP BY program_id
             ) pc ON pc.program_id = p.id
             WHERE p.id IN (
@@ -171,17 +179,59 @@ const getProgramById = async (req, res) => {
 
         const projectsResult = await safeQuery(
             `
-            SELECT
-                pp.*,
-                cu.full_name AS created_by_name,
-                au.full_name AS assigned_to_name,
-                au.email AS assigned_to_email,
-                au.role AS assigned_to_role
-            FROM program_projects pp
-            LEFT JOIN users cu ON pp.created_by = cu.id
-            LEFT JOIN users au ON pp.assigned_to = au.id
-            WHERE pp.program_id = $1
-            ORDER BY pp.created_at DESC
+            SELECT * FROM (
+                SELECT
+                    pp.id,
+                    pp.program_id,
+                    pp.name,
+                    pp.domain,
+                    pp.about_title,
+                    pp.about_description,
+                    pp.status,
+                    pp.priority,
+                    pp.start_date,
+                    pp.deadline,
+                    pp.created_by,
+                    pp.assigned_to,
+                    pp.created_at,
+                    pp.updated_at,
+                    cu.full_name AS created_by_name,
+                    au.full_name AS assigned_to_name,
+                    au.email AS assigned_to_email,
+                    au.role AS assigned_to_role
+                FROM program_projects pp
+                LEFT JOIN users cu ON pp.created_by = cu.id
+                LEFT JOIN users au ON pp.assigned_to = au.id
+                WHERE pp.program_id = $1
+
+                UNION ALL
+
+                SELECT
+                    pr.id,
+                    pr.program_id,
+                    pr.name,
+                    pr.domain,
+                    pr.about_title,
+                    pr.about_description,
+                    pr.status,
+                    pr.priority,
+                    pr.start_date,
+                    pr.deadline,
+                    pr.created_by,
+                    COALESCE(pr.project_manager_id, pr.manager_id) AS assigned_to,
+                    pr.created_at,
+                    pr.updated_at,
+                    cu.full_name AS created_by_name,
+                    au.full_name AS assigned_to_name,
+                    au.email AS assigned_to_email,
+                    au.role AS assigned_to_role
+                FROM projects pr
+                LEFT JOIN users cu ON pr.created_by = cu.id
+                LEFT JOIN users au ON COALESCE(pr.project_manager_id, pr.manager_id) = au.id
+                WHERE pr.program_id = $1
+                  AND pr.id NOT IN (SELECT id FROM program_projects WHERE program_id = $1)
+            ) combined
+            ORDER BY created_at DESC
             `,
             [programId]
         );
@@ -442,7 +492,7 @@ const createProgramProject = async (req, res) => {
             }
         }
 
-        const projectId = `pp-${Date.now()}`;
+        const projectId = `proj-${Date.now()}`;
         const result = await safeQuery(
             `
             INSERT INTO program_projects (
@@ -468,6 +518,56 @@ const createProgramProject = async (req, res) => {
                 user.id,
             ]
         );
+
+        // Also insert into main projects table so it appears in Projects & Dashboard views under this program
+        try {
+            await safeQuery(
+                `
+                INSERT INTO projects (
+                    id, name, domain, about_title, about_description,
+                    start_date, deadline, priority, status, program_id,
+                    manager_id, project_manager_id, created_by
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                ON CONFLICT (id) DO UPDATE SET
+                    program_id = EXCLUDED.program_id,
+                    name = EXCLUDED.name,
+                    domain = EXCLUDED.domain,
+                    about_title = EXCLUDED.about_title,
+                    about_description = EXCLUDED.about_description,
+                    start_date = EXCLUDED.start_date,
+                    deadline = EXCLUDED.deadline,
+                    priority = EXCLUDED.priority,
+                    status = EXCLUDED.status,
+                    manager_id = EXCLUDED.manager_id,
+                    project_manager_id = EXCLUDED.project_manager_id
+                `,
+                [
+                    projectId,
+                    name.trim(),
+                    domain || null,
+                    aboutTitle || null,
+                    aboutDescription || null,
+                    startDate || null,
+                    deadline || null,
+                    priority || "Medium",
+                    assignedTo ? "In Progress" : "Unassigned",
+                    programId,
+                    assignedTo || null,
+                    assignedTo || null,
+                    user.id,
+                ]
+            );
+
+            const memberTargetId = assignedTo || user.id;
+            const memberId = `pm-${Date.now()}`;
+            await safeQuery(
+                `INSERT INTO project_members (id, project_id, user_id, role) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+                [memberId, projectId, memberTargetId, assignedTo ? "Lead Contributor" : (user.role || "Project Manager")]
+            );
+        } catch (syncErr) {
+            console.warn("Could not sync program_project to projects table:", syncErr.message);
+        }
 
         return res.status(201).json({
             success: true,
@@ -531,7 +631,22 @@ const assignProgramProject = async (req, res) => {
             [assignedTo, projectId, programId]
         );
 
-        if (result.rows.length === 0) {
+        // Also update projects table if project exists there
+        const projUpdate = await safeQuery(
+            `
+            UPDATE projects
+            SET
+                project_manager_id = $1,
+                manager_id = $1,
+                status = CASE WHEN status = 'Unassigned' THEN 'In Progress' ELSE status END,
+                updated_at = NOW()
+            WHERE id = $2 AND program_id = $3
+            RETURNING *
+            `,
+            [assignedTo, projectId, programId]
+        );
+
+        if (result.rows.length === 0 && projUpdate.rows.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: "Program project not found.",
@@ -540,7 +655,7 @@ const assignProgramProject = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            project: result.rows[0],
+            project: result.rows[0] || projUpdate.rows[0],
             message: `Deliverable assigned to ${assigneeCheck.rows[0].full_name}`,
         });
     } catch (error) {
@@ -607,14 +722,44 @@ const updateProgramProject = async (req, res) => {
             ]
         );
 
-        if (result.rows.length === 0) {
+        const projUpdate = await safeQuery(
+            `
+            UPDATE projects
+            SET
+                name = COALESCE($1, name),
+                domain = COALESCE($2, domain),
+                about_title = COALESCE($3, about_title),
+                about_description = COALESCE($4, about_description),
+                start_date = COALESCE($5, start_date),
+                deadline = COALESCE($6, deadline),
+                priority = COALESCE($7, priority),
+                status = COALESCE($8, status),
+                updated_at = NOW()
+            WHERE id = $9 AND program_id = $10
+            RETURNING *
+            `,
+            [
+                name?.trim() || null,
+                domain ?? null,
+                aboutTitle ?? null,
+                aboutDescription ?? null,
+                startDate || null,
+                deadline || null,
+                priority || null,
+                status || null,
+                projectId,
+                programId,
+            ]
+        );
+
+        if (result.rows.length === 0 && projUpdate.rows.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: "Program project not found.",
             });
         }
 
-        return res.status(200).json({ success: true, project: result.rows[0] });
+        return res.status(200).json({ success: true, project: result.rows[0] || projUpdate.rows[0] });
     } catch (error) {
         console.error("❌ updateProgramProject error:", error);
         return res.status(500).json({
@@ -643,7 +788,12 @@ const deleteProgramProject = async (req, res) => {
             [projectId, programId]
         );
 
-        if (result.rows.length === 0) {
+        const projDel = await safeQuery(
+            `DELETE FROM projects WHERE id = $1 AND program_id = $2 RETURNING id`,
+            [projectId, programId]
+        );
+
+        if (result.rows.length === 0 && projDel.rows.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: "Program project not found.",

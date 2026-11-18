@@ -59,6 +59,7 @@ const getProjects = async (req, res) => {
                     ELSE ROUND((tc.completed_tasks::numeric / tc.total_tasks::numeric) * 100)::integer
                 END AS progress,
                 p.program_id,
+                prog.name AS program_name,
                 COALESCE(tc.total_tasks, 0)::integer AS total_tasks,
                 COALESCE(tc.completed_tasks, 0)::integer AS completed_tasks,
                 p.created_at,
@@ -76,6 +77,9 @@ const getProjects = async (req, res) => {
                 COALESCE(pm_agg.members, '[]'::json) AS members
 
             FROM projects p
+
+            LEFT JOIN programs prog
+                ON prog.id = p.program_id
 
             LEFT JOIN users creator
                 ON creator.id = p.created_by
@@ -117,7 +121,7 @@ const getProjects = async (req, res) => {
 
             ORDER BY p.created_at DESC
         `, [
-            ['Project Manager', 'Executive Manager', 'System Administrator'].includes(req.user?.role),
+            ['Project Manager', 'Task Manager', 'Executive Manager', 'System Administrator'].includes(req.user?.role),
             req.user?.id
         ]);
 
@@ -217,7 +221,6 @@ const createProject = async (req, res) => {
 
         const projectId = `proj-${Date.now()}`;
         
-
         const result = await safeQuery(
             `
             INSERT INTO projects (
@@ -241,15 +244,55 @@ const createProject = async (req, res) => {
                 projectId,
                 name.trim(),
                 domain || null,
-                aboutTitle || null,
-                aboutDescription || null,
-                startDate || null,
+                finalAboutTitle || null,
+                finalAboutDescription || null,
+                finalStartDate || null,
                 deadline || null,
                 priority || "Medium",
-                programId,
+                finalProgramId || null,
                 req.user.id
             ]
         );
+
+        // If linked to a program, also sync into program_projects so Program views and counts stay unified
+        if (finalProgramId) {
+            try {
+                await safeQuery(
+                    `
+                    INSERT INTO program_projects (
+                        id, program_id, name, domain, about_title, about_description,
+                        start_date, deadline, priority, assigned_to, status, created_by
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    ON CONFLICT (id) DO UPDATE SET
+                        program_id = EXCLUDED.program_id,
+                        name = EXCLUDED.name,
+                        domain = EXCLUDED.domain,
+                        about_title = EXCLUDED.about_title,
+                        about_description = EXCLUDED.about_description,
+                        start_date = EXCLUDED.start_date,
+                        deadline = EXCLUDED.deadline,
+                        priority = EXCLUDED.priority
+                    `,
+                    [
+                        projectId,
+                        finalProgramId,
+                        name.trim(),
+                        domain || null,
+                        finalAboutTitle || null,
+                        finalAboutDescription || null,
+                        finalStartDate || null,
+                        deadline || null,
+                        priority || "Medium",
+                        req.user.id,
+                        "In Progress",
+                        req.user.id
+                    ]
+                );
+            } catch (e) {
+                console.warn("Could not sync project to program_projects:", e.message);
+            }
+        }
 
         // Also add creator to project_members
         try {
@@ -322,7 +365,7 @@ const updateProject = async (req, res) => {
         /* ---------------------------------------------------------
            Validate dates
         --------------------------------------------------------- */
-        if (startDate && deadline && deadline < startDate) {
+        if (finalStartDate && deadline && deadline < finalStartDate) {
             return res.status(400).json({
                 success: false,
                 message: "Deadline must be greater than or equal to the start date."
@@ -358,18 +401,20 @@ const updateProject = async (req, res) => {
                 start_date = $5,
                 deadline = $6,
                 priority = $7,
+                program_id = COALESCE($8, program_id),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $8
+            WHERE id = $9
             RETURNING *
             `,
             [
                 name.trim(),
                 domain || null,
-                aboutTitle || null,
-                aboutDescription || null,
-                startDate || null,
+                finalAboutTitle || null,
+                finalAboutDescription || null,
+                finalStartDate || null,
                 deadline || null,
                 priority || "Medium",
+                finalProgramId || null,
                 projectId
             ]
         );

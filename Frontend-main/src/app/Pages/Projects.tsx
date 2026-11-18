@@ -114,8 +114,13 @@ export default function Projects() {
   const [previewProject, setPreviewProject] = useState<{ id: string; name: string; domain?: string } | null>(null);
   const [form, setForm] = useState({
     name: "", domain: "", aboutTitle: "", aboutDescription: "",
-    startDate: "", deadline: "", priority: "Medium",
+    startDate: "", deadline: "", priority: "Medium", programId: "",
   });
+
+  // Sync default programId in form when selectedProgram changes
+  useEffect(() => {
+    setForm(prev => ({ ...prev, programId: selectedProgram?.id || "" }));
+  }, [selectedProgram?.id]);
 
   // Assign Project Modal State
   const [assignModalOpen, setAssignModalOpen] = useState(false);
@@ -203,13 +208,24 @@ export default function Projects() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true); setError("");
     try {
+      const targetProgramId = form.programId || selectedProgram?.id || null;
       const res = await fetch(`${API_BASE}/projects`, {
-        method: "POST", headers: getAuthHeaders(), body: JSON.stringify(form),
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          ...form,
+          programId: targetProgramId,
+          program_id: targetProgramId,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to create project");
       setIsModalOpen(false);
-      setForm({ name: "", domain: "", aboutTitle: "", aboutDescription: "", startDate: "", deadline: "", priority: "Medium" });
+      setForm({
+        name: "", domain: "", aboutTitle: "", aboutDescription: "",
+        startDate: "", deadline: "", priority: "Medium",
+        programId: selectedProgram?.id || "",
+      });
       fetchProjects();
     } catch (err: any) { setError(err.message); }
     finally { setSaving(false); }
@@ -265,7 +281,7 @@ export default function Projects() {
             }`}
           >
             <FolderKanban size={14} className={activeMainTab === "projects" ? "text-indigo-600" : ""} />
-            Projects View ({projects.length})
+            Projects View ({scopedProjects.length})
           </button>
           <button
             onClick={() => setActiveMainTab("programs")}
@@ -282,7 +298,10 @@ export default function Projects() {
 
         {isManager && activeMainTab === "projects" && (
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setForm(prev => ({ ...prev, programId: selectedProgram?.id || prev.programId || "" }));
+              setIsModalOpen(true);
+            }}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-semibold text-xs shadow-sm shadow-indigo-200 transition-all cursor-pointer"
           >
             <Plus size={15} /> New Project
@@ -298,10 +317,14 @@ export default function Projects() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-1">Portfolio</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-1">
+                {selectedProgram ? selectedProgram.name : "Portfolio"}
+              </p>
               <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Active Projects</h1>
               <div className="flex items-center gap-2 mt-1">
-                <p className="text-[13px] text-gray-500">{projects.length} projects in workspace</p>
+                <p className="text-[13px] text-gray-500">
+                  {scopedProjects.length} projects in {selectedProgram ? selectedProgram.name : "workspace"}
+                </p>
                 <div className="flex items-center gap-1 text-[11px] text-indigo-500 font-semibold bg-indigo-50 px-2 py-0.5 rounded-full">
                   <Sparkles size={10} /> AI covers
                 </div>
@@ -556,6 +579,24 @@ export default function Projects() {
                   placeholder="e.g. Mobile App Redesign"
                   className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all" />
               </div>
+
+              {programs.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5">Program / Initiative</label>
+                  <select
+                    value={form.programId || selectedProgram?.id || ""}
+                    onChange={e => setForm({ ...form, programId: e.target.value })}
+                    className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white"
+                  >
+                    <option value="">Select Program...</option>
+                    {programs.map(prog => (
+                      <option key={prog.id} value={prog.id}>
+                        {prog.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Live Cover Preview */}
               {previewProject && (

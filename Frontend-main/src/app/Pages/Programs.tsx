@@ -297,7 +297,7 @@ export default function Programs() {
         headers: getAuthHeaders(),
       });
       const data = await res.json();
-      if (res.ok && Array.isArray(data.programs) && data.programs.length > 0) {
+      if (res.ok && Array.isArray(data.programs)) {
         setPrograms(data.programs);
       } else {
         setPrograms(getFallbackPrograms());
@@ -455,6 +455,7 @@ export default function Programs() {
           priority: "High",
         });
         await fetchPrograms();
+        window.dispatchEvent(new Event("programsUpdated"));
       } else {
         const data = await res.json();
         throw new Error(data.message || "Failed to create program");
@@ -503,6 +504,7 @@ export default function Programs() {
         });
         await fetchProgramDetails(activeProgram.id);
         await fetchPrograms();
+        window.dispatchEvent(new Event("programsUpdated"));
       } else {
         const data = await res.json();
         throw new Error(data.message || "Failed to create deliverable");

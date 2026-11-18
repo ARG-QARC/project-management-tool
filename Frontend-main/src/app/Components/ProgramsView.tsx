@@ -148,7 +148,7 @@ export default function ProgramsView({
       setLoading(true);
       const res = await fetch(`${API_BASE}/programs`, { headers: getHeaders() });
       const data = await res.json();
-      if (res.ok && Array.isArray(data.programs) && data.programs.length > 0) {
+      if (res.ok && Array.isArray(data.programs)) {
         setPrograms(data.programs);
       } else {
         setPrograms(getFallbackPrograms());
@@ -258,6 +258,7 @@ export default function ProgramsView({
         setCreateProgramOpen(false);
         setPForm({ name: "", description: "", domain: "", startDate: "", endDate: "", priority: "Medium" });
         fetchPrograms();
+        window.dispatchEvent(new Event("programsUpdated"));
       }
     } catch (e) {
       console.error(e);

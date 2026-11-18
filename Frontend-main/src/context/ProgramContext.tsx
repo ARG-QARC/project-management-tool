@@ -61,7 +61,8 @@ type ProgramContextType = {
   selectedProgram: Program | null; // null = "All Programs / Global View" (manager only)
   selectProgram: (programId: string | "all") => void;
   addProgram: (program: Omit<Program, "id">) => void;
-  getProjectProgram: (project: { id?: string; name?: string; domain?: string; program_id?: string; programId?: string }) => Program;
+  refreshPrograms: () => Promise<void>;
+  getProjectProgram: (project: { id?: string; name?: string; domain?: string; program_id?: string; programId?: string; program_name?: string }) => Program;
   isManager: boolean;
 };
 
@@ -69,8 +70,8 @@ const ProgramContext = createContext<ProgramContextType | undefined>(undefined);
 
 export function ProgramProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [programs, setPrograms] = useState<Program[]>([DEFAULT_PROGRAMS[0]]);
-  const [selectedProgramId, setSelectedProgramId] = useState<string>("prog-qarc");
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [selectedProgramId, setSelectedProgramId] = useState<string>("all");
 
   const checkIsManager = (userObj: any) => {
     const role = (userObj?.role || "").toLowerCase();
@@ -103,8 +104,8 @@ export function ProgramProvider({ children }: { children: React.ReactNode }) {
     const token = localStorage.getItem("token") || localStorage.getItem("accessToken");
 
     if (!token) {
-      setPrograms(userIsMgr ? DEFAULT_PROGRAMS : [DEFAULT_PROGRAMS[0]]);
-      setSelectedProgramId(userIsMgr ? "all" : "prog-qarc");
+      setPrograms([]);
+      setSelectedProgramId("all");
       return;
     }
 
@@ -118,7 +119,7 @@ export function ProgramProvider({ children }: { children: React.ReactNode }) {
 
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.programs) && data.programs.length > 0) {
+        if (Array.isArray(data.programs)) {
           const apiPrograms: Program[] = data.programs.map((p: any) => ({
             id: p.id,
             name: p.name,
@@ -131,11 +132,13 @@ export function ProgramProvider({ children }: { children: React.ReactNode }) {
           setPrograms(apiPrograms);
 
           if (!userIsMgr) {
-            // Member: strictly select their assigned program
-            setSelectedProgramId(apiPrograms[0].id);
-            localStorage.setItem("arg_selected_program", apiPrograms[0].id);
+            if (apiPrograms.length > 0) {
+              setSelectedProgramId(apiPrograms[0].id);
+              localStorage.setItem("arg_selected_program", apiPrograms[0].id);
+            } else {
+              setSelectedProgramId("all");
+            }
           } else {
-            // Manager: restore selection or keep "all"
             const storedSelected = localStorage.getItem("arg_selected_program");
             if (storedSelected && (storedSelected === "all" || apiPrograms.some(p => p.id === storedSelected))) {
               setSelectedProgramId(storedSelected);
@@ -150,28 +153,25 @@ export function ProgramProvider({ children }: { children: React.ReactNode }) {
       console.warn("Could not fetch programs from API, using fallback:", err);
     }
 
-    // Fallback logic
-    if (!userIsMgr) {
-      setPrograms([DEFAULT_PROGRAMS[0]]);
-      setSelectedProgramId("prog-qarc");
-      localStorage.setItem("arg_selected_program", "prog-qarc");
-    } else {
-      setPrograms(DEFAULT_PROGRAMS);
-      const storedSelected = localStorage.getItem("arg_selected_program") || "all";
-      setSelectedProgramId(storedSelected);
-    }
+    // Fallback logic only on network error
+    const storedSelected = localStorage.getItem("arg_selected_program") || "all";
+    setSelectedProgramId(storedSelected);
   }, []);
 
   useEffect(() => {
     syncUserAndPrograms();
     window.addEventListener("storage", syncUserAndPrograms);
-    return () => window.removeEventListener("storage", syncUserAndPrograms);
+    window.addEventListener("programsUpdated", syncUserAndPrograms);
+    return () => {
+      window.removeEventListener("storage", syncUserAndPrograms);
+      window.removeEventListener("programsUpdated", syncUserAndPrograms);
+    };
   }, [syncUserAndPrograms]);
 
   const selectProgram = (programId: string | "all") => {
-    // Member cannot select "all" or other programs
-    if (!isManager) {
-      const memberProg = programs[0]?.id || "prog-qarc";
+    // Member cannot select "all" or other programs if assigned one
+    if (!isManager && programs.length > 0) {
+      const memberProg = programs[0].id;
       setSelectedProgramId(memberProg);
       localStorage.setItem("arg_selected_program", memberProg);
       return;
@@ -201,62 +201,50 @@ export function ProgramProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Helper to map a project to its program
-  const getProjectProgram = (project: { id?: string; name?: string; domain?: string; program_id?: string; programId?: string }): Program => {
-    const qarcProg = programs.find(p => p.id === "prog-qarc") || programs[0] || DEFAULT_PROGRAMS[0];
-
-    // Priority 1: Direct database program association
-    const directProgramId = project.program_id || project.programId;
-    if (directProgramId) {
-      if (directProgramId === "prog-qarc") return qarcProg;
-      const matched = programs.find(p => p.id === directProgramId);
-      if (matched) return matched;
-    }
-
-    const pid = (project.id || "").toLowerCase();
-    const nameLower = (project.name || "").toLowerCase();
-
-    // Priority 2: QARC Projects matching (all 12 QARC initiatives)
-    if (
-      pid.includes("voicescribe") || nameLower.includes("voicescribe") ||
-      pid.includes("fishery") || nameLower.includes("fishery") ||
-      pid.includes("hr-agent") || nameLower.includes("hr agent") ||
-      pid.includes("freight") || nameLower.includes("freight") ||
-      pid.includes("ai-tutor") || nameLower.includes("ai tutor") || nameLower.includes("tutor") ||
-      pid.includes("uae-voice") || nameLower.includes("uae voice") ||
-      pid.includes("axiom") || nameLower.includes("axiom") ||
-      pid.includes("ecommerce") || nameLower.includes("ecommerce") ||
-      pid.includes("embassy") || nameLower.includes("embassy") ||
-      pid.includes("retina") || nameLower.includes("retina") ||
-      pid.includes("fmd") || nameLower.includes("fmd") || nameLower.includes("foot mouth") ||
-      pid.includes("marketing") || nameLower.includes("marketing agent")
-    ) {
-      return qarcProg;
-    }
-
-    const domainLower = (project.domain || "").toLowerCase();
-
-    if (domainLower.includes("fin") || domainLower.includes("bank") || nameLower.includes("pay") || nameLower.includes("finance")) {
-      return programs.find(p => p.id === "prog-core-fintech") || qarcProg;
-    }
-    if (domainLower.includes("intel") || (domainLower.includes("ai") && !domainLower.includes("speech") && !domainLower.includes("medical")) || nameLower.includes("data pipeline")) {
-      return programs.find(p => p.id === "prog-ai-intelligence") || qarcProg;
-    }
-    if (domainLower.includes("mobile") || domainLower.includes("app") || nameLower.includes("redesign") || nameLower.includes("ui") || domainLower.includes("design")) {
-      return programs.find(p => p.id === "prog-customer-cx") || qarcProg;
-    }
-    if (domainLower.includes("infra") || domainLower.includes("devops") || domainLower.includes("cloud") || domainLower.includes("security")) {
-      return programs.find(p => p.id === "prog-cloud-infra") || qarcProg;
-    }
-
-    return qarcProg;
-  };
-
   // Active program: for a member, if selectedProgramId isn't found, default to their only program
   const activeProgram =
     selectedProgramId === "all"
       ? null
-      : programs.find(p => p.id === selectedProgramId) || (!isManager ? programs[0] : null);
+      : programs.find(p => p.id === selectedProgramId) || (!isManager && programs.length > 0 ? programs[0] : null);
+
+  // Helper to map a project to its program
+  const getProjectProgram = (project: { id?: string; name?: string; domain?: string; program_id?: string; programId?: string; program_name?: string }): Program => {
+    const defaultProg = programs[0] || DEFAULT_PROGRAMS[0];
+
+    // Priority 1: Direct database program association (NEVER override an explicit program_id)
+    const directProgramId = project.program_id || project.programId;
+    if (directProgramId) {
+      const matched = programs.find(p => p.id === directProgramId);
+      if (matched) return matched;
+      if (activeProgram && activeProgram.id === directProgramId) return activeProgram;
+      return {
+        id: directProgramId,
+        name: project.program_name || "Assigned Program",
+        code: (project.program_name || "PRG").substring(0, 4).toUpperCase(),
+        description: "",
+        domain: project.domain || "",
+        status: "Active",
+      };
+    }
+
+    const nameLower = (project.name || "").toLowerCase();
+    const domainLower = (project.domain || "").toLowerCase();
+
+    // Priority 2: Match against user's actual programs by name or domain
+    if (programs.length > 0) {
+      const matchedByNameOrDomain = programs.find(p => {
+        const pName = (p.name || "").toLowerCase();
+        const pDomain = (p.domain || "").toLowerCase();
+        return (
+          (pName && (nameLower.includes(pName) || pName.includes(nameLower) || (domainLower && pName.includes(domainLower)))) ||
+          (pDomain && domainLower && (domainLower.includes(pDomain) || pDomain.includes(domainLower)))
+        );
+      });
+      if (matchedByNameOrDomain) return matchedByNameOrDomain;
+    }
+
+    return defaultProg;
+  };
 
   return (
     <ProgramContext.Provider
@@ -265,6 +253,7 @@ export function ProgramProvider({ children }: { children: React.ReactNode }) {
         selectedProgram: activeProgram,
         selectProgram,
         addProgram,
+        refreshPrograms: syncUserAndPrograms,
         getProjectProgram,
         isManager,
       }}
