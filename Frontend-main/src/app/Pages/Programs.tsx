@@ -1461,14 +1461,15 @@ export default function Programs() {
 
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                      Lead Assignee
+                      Assigned to *
                     </label>
                     <select
+                      required
                       value={prForm.assignedTo}
                       onChange={(e) => setPrForm({ ...prForm, assignedTo: e.target.value })}
                       className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all font-medium"
                     >
-                      <option value="">Unassigned</option>
+                      <option value="">Select member...</option>
                       {assignableUsers.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.full_name} ({u.role})

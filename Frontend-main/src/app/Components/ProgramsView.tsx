@@ -817,14 +817,15 @@ export default function ProgramsView({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Assign Manager / Lead
+                    Assigned to *
                   </label>
                   <select
+                    required
                     value={prForm.assignedTo}
                     onChange={e => setPrForm({ ...prForm, assignedTo: e.target.value })}
                     className="w-full text-xs border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
                   >
-                    <option value="">Select manager...</option>
+                    <option value="">Select member...</option>
                     {assignableUsers.map(u => (
                       <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
                     ))}

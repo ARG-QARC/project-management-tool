@@ -803,7 +803,7 @@ export default function ProjectDetail({ initialProjectId }: ProjectDetailProps =
                   <th className="text-left py-2.5 px-6 text-[11px] font-bold uppercase tracking-wider text-gray-400">Task</th>
                   <th className="text-left py-2.5 px-4 text-[11px] font-bold uppercase tracking-wider text-gray-400">Status</th>
                   <th className="text-left py-2.5 px-4 text-[11px] font-bold uppercase tracking-wider text-gray-400 hidden md:table-cell">Priority</th>
-                  <th className="text-left py-2.5 px-4 text-[11px] font-bold uppercase tracking-wider text-gray-400 hidden lg:table-cell">Member</th>
+                  <th className="text-left py-2.5 px-4 text-[11px] font-bold uppercase tracking-wider text-gray-400 hidden lg:table-cell">Assigned to</th>
                   <th className="text-left py-2.5 px-4 text-[11px] font-bold uppercase tracking-wider text-gray-400 hidden md:table-cell">Due Date</th>
                 </tr>
               </thead>

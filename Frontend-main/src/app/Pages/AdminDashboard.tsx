@@ -5,7 +5,7 @@ import {
   Users, FolderKanban, Layers, Plus, Search, ShieldCheck,
   CheckCircle2, AlertCircle, Clock, Calendar, Mail,
   UserPlus, Sparkles, Filter, RefreshCw, ChevronRight,
-  ExternalLink, UserCheck, Trash2, X, Lock, Building, Tag, FileText, Eye, Check, TrendingUp, Activity, Briefcase,
+  ExternalLink, UserCheck, Trash2, X, Lock, Building, Tag, FileText, Eye, Check, TrendingUp, Activity, Briefcase, Award, Download
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
@@ -23,11 +23,24 @@ type UserItem = {
   created_at?: string;
   projects?: any[];
   tasks?: any[];
+  total_tasks?: number;
+  completed_tasks?: number;
+  in_progress_tasks?: number;
+  overdue_tasks?: number;
+  daily_updates_count?: number;
+  completion_rate?: number;
+  on_time_rate?: number;
+  kpi_score?: number;
   taskStats?: {
     total: number;
     completed: number;
     in_progress: number;
     to_do: number;
+    overdue?: number;
+    completion_rate?: number;
+    on_time_rate?: number;
+    daily_updates_count?: number;
+    kpi_score?: number;
   };
 };
 
@@ -74,7 +87,7 @@ export default function AdminDashboard() {
     }
   }, [user, isAdmin, router]);
 
-  const [activeTab, setActiveTab] = useState<"overview" | "members" | "programs" | "projects">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "members" | "kpis" | "programs" | "projects">("overview");
   const [loading, setLoading] = useState(true);
 
   // Data states
@@ -621,10 +634,11 @@ export default function AdminDashboard() {
       </div>
 
       {/* ── Tab Switcher ── */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 flex-wrap">
         {[
           { key: "overview", label: "Overview & Quick Actions", icon: Sparkles },
           { key: "members", label: `Members (${usersList.length})`, icon: Users },
+          { key: "kpis", label: `Individual Member KPIs (${usersList.length})`, icon: Award },
           { key: "programs", label: `Programs (${programsList.length})`, icon: Layers },
           { key: "projects", label: `Projects (${projectsList.length})`, icon: FolderKanban },
         ].map(t => (
@@ -786,7 +800,7 @@ export default function AdminDashboard() {
                 <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   <th className="py-3 px-5">Member</th>
                   <th className="py-3 px-4">Role</th>
-                  <th className="py-3 px-4">Job Title</th>
+                  <th className="py-3 px-4">Individual KPI & Tasks</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Remarks & Profile</th>
                   <th className="py-3 px-4 text-right">Actions</th>
@@ -800,7 +814,13 @@ export default function AdminDashboard() {
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map(u => (
+                  filteredUsers.map(u => {
+                    const kpi = u.kpi_score ?? u.taskStats?.kpi_score ?? 0;
+                    const totalT = u.total_tasks ?? u.taskStats?.total ?? 0;
+                    const doneT = u.completed_tasks ?? u.taskStats?.completed ?? 0;
+                    const compRate = u.completion_rate ?? u.taskStats?.completion_rate ?? 0;
+                    const overdueT = u.overdue_tasks ?? u.taskStats?.overdue ?? 0;
+                    return (
                     <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-3 px-5">
                         <div className="flex items-center gap-3">
@@ -809,7 +829,7 @@ export default function AdminDashboard() {
                           </div>
                           <div>
                             <p className="text-xs font-bold text-slate-900">{u.full_name}</p>
-                            <p className="text-[10px] text-slate-400">{u.email}</p>
+                            <p className="text-[10px] text-slate-400">{u.email} • {u.job_title || "Specialist"}</p>
                           </div>
                         </div>
                       </td>
@@ -825,8 +845,26 @@ export default function AdminDashboard() {
                           {u.role}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-xs text-slate-600 font-medium">
-                        {u.job_title || "Specialist"}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                            kpi >= 80
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : kpi >= 50
+                              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                              : "bg-amber-50 text-amber-700 border-amber-200"
+                          }`}>
+                            <Award size={11} /> {kpi}/100
+                          </span>
+                          <div className="text-[11px] text-slate-600">
+                            <span className="font-bold text-slate-800">{doneT}/{totalT}</span> tasks ({compRate}%)
+                            {overdueT > 0 && (
+                              <span className="ml-1.5 text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
+                                {overdueT} late
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -878,10 +916,132 @@ export default function AdminDashboard() {
                         </button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ TAB: INDIVIDUAL MEMBER KPIs ════════════════ */}
+      {activeTab === "kpis" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Award size={16} className="text-indigo-600" /> Individual Member KPI Scorecard
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Individual performance metrics, task completion rates, on-time delivery, and daily activity for each member.
+              </p>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Filter members..."
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredUsers.map(u => {
+              const kpi = u.kpi_score ?? u.taskStats?.kpi_score ?? 0;
+              const totalT = u.total_tasks ?? u.taskStats?.total ?? 0;
+              const doneT = u.completed_tasks ?? u.taskStats?.completed ?? 0;
+              const inProgT = u.in_progress_tasks ?? u.taskStats?.in_progress ?? 0;
+              const overdueT = u.overdue_tasks ?? u.taskStats?.overdue ?? 0;
+              const compRate = u.completion_rate ?? u.taskStats?.completion_rate ?? 0;
+              const onTimeRate = u.on_time_rate ?? u.taskStats?.on_time_rate ?? 100;
+              const updatesCnt = u.daily_updates_count ?? u.taskStats?.daily_updates_count ?? 0;
+
+              return (
+                <div key={u.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-indigo-300 transition-all flex flex-col justify-between space-y-4">
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold flex items-center justify-center text-sm flex-shrink-0">
+                          {getInitials(u.full_name)}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-bold text-slate-900 truncate">{u.full_name}</h4>
+                          <p className="text-[11px] text-slate-400 truncate">{u.role} • {u.job_title || "Specialist"}</p>
+                        </div>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold border flex-shrink-0 ${
+                        kpi >= 80
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : kpi >= 50
+                          ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200"
+                      }`}>
+                        <Award size={12} /> {kpi} / 100
+                      </span>
+                    </div>
+
+                    {/* KPI Progress Bar */}
+                    <div className="mt-4 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-semibold">Overall KPI Score</span>
+                        <span className="font-bold text-slate-800">{kpi}%</span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            kpi >= 80 ? "bg-emerald-500" : kpi >= 50 ? "bg-indigo-600" : "bg-amber-500"
+                          }`}
+                          style={{ width: `${kpi}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Metric Breakdown Grid */}
+                    <div className="grid grid-cols-3 gap-2 mt-4">
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center">
+                        <p className="text-[10px] font-bold uppercase text-slate-400">Tasks Done</p>
+                        <p className="text-sm font-black text-emerald-700 mt-0.5">{doneT} / {totalT}</p>
+                        <p className="text-[10px] text-slate-500">{compRate}% rate</p>
+                      </div>
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center">
+                        <p className="text-[10px] font-bold uppercase text-slate-400">On-Time</p>
+                        <p className="text-sm font-black text-indigo-700 mt-0.5">{onTimeRate}%</p>
+                        <p className="text-[10px] text-rose-500 font-semibold">{overdueT} overdue</p>
+                      </div>
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center">
+                        <p className="text-[10px] font-bold uppercase text-slate-400">Daily Logs</p>
+                        <p className="text-sm font-black text-violet-700 mt-0.5">{updatesCnt}</p>
+                        <p className="text-[10px] text-slate-500">{inProgT} active</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openProfileModal(u)}
+                      className="flex-1 py-1.5 px-3 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors cursor-pointer text-center"
+                    >
+                      View Full KPI & Remarks
+                    </button>
+                    <a
+                      href={`${API_BASE}/reports/user/${u.id}/download/pdf?token=${encodeURIComponent(
+                        (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("accessToken"))) || ""
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="py-1.5 px-3 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1"
+                      title="Download Individual KPI Report PDF"
+                    >
+                      <Download size={12} /> PDF
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -963,7 +1123,7 @@ export default function AdminDashboard() {
                   <th className="py-3 px-5">Project Name</th>
                   <th className="py-3 px-4">Domain</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Lead / Assignee</th>
+                  <th className="py-3 px-4">Assigned to</th>
                   <th className="py-3 px-4">Progress</th>
                   <th className="py-3 px-4 text-right">Action</th>
                 </tr>
@@ -1269,13 +1429,14 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Assign Lead Member</label>
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Assigned to *</label>
                 <select
+                  required
                   value={projectForm.assigneeId}
                   onChange={e => setProjectForm({ ...projectForm, assigneeId: e.target.value })}
                   className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:border-indigo-500 bg-white"
                 >
-                  <option value="">Leave Unassigned</option>
+                  <option value="">Select member...</option>
                   {usersList.map(u => (
                     <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
                   ))}
@@ -1410,30 +1571,36 @@ export default function AdminDashboard() {
 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              {/* Quick KPI stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Individual KPI Scorecard */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3.5 text-center">
+                  <p className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">KPI Score</p>
+                  <p className="text-xl font-black text-indigo-800 mt-0.5">
+                    {selectedProfileUser.kpi_score ?? selectedProfileUser.taskStats?.kpi_score ?? 0} / 100
+                  </p>
+                </div>
                 <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 text-center">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Tasks</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Tasks</p>
                   <p className="text-xl font-bold text-slate-900 mt-0.5">
                     {selectedProfileUser.taskStats?.total ?? (selectedProfileUser.tasks?.length || 0)}
                   </p>
                 </div>
                 <div className="bg-emerald-50/60 border border-emerald-200/70 rounded-2xl p-3.5 text-center">
-                  <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Completed</p>
+                  <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Completed</p>
                   <p className="text-xl font-bold text-emerald-700 mt-0.5">
-                    {selectedProfileUser.taskStats?.completed ?? 0}
+                    {selectedProfileUser.taskStats?.completed ?? 0} ({selectedProfileUser.completion_rate ?? selectedProfileUser.taskStats?.completion_rate ?? 0}%)
                   </p>
                 </div>
                 <div className="bg-blue-50/60 border border-blue-200/70 rounded-2xl p-3.5 text-center">
-                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">In Progress</p>
+                  <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">In Progress</p>
                   <p className="text-xl font-bold text-blue-700 mt-0.5">
                     {selectedProfileUser.taskStats?.in_progress ?? 0}
                   </p>
                 </div>
-                <div className="bg-purple-50/60 border border-purple-200/70 rounded-2xl p-3.5 text-center">
-                  <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider">Projects</p>
-                  <p className="text-xl font-bold text-purple-700 mt-0.5">
-                    {selectedProfileUser.projects?.length || 0}
+                <div className="bg-rose-50/60 border border-rose-200/70 rounded-2xl p-3.5 text-center">
+                  <p className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Overdue</p>
+                  <p className="text-xl font-bold text-rose-700 mt-0.5">
+                    {selectedProfileUser.overdue_tasks ?? selectedProfileUser.taskStats?.overdue ?? 0}
                   </p>
                 </div>
               </div>

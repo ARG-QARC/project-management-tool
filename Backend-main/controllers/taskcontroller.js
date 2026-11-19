@@ -191,6 +191,13 @@ const createTask = async (req, res) => {
             });
         }
 
+        if (!assigneeId) {
+            return res.status(400).json({
+                success: false,
+                message: "'Assigned to' is compulsory. Please assign this task to a member."
+            });
+        }
+
         if (!finalStartDate || !finalStartTime || !finalDueDate || !finalDueTime) {
             return res.status(400).json({
                 success: false,

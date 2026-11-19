@@ -8,6 +8,7 @@ const {
     getProjectReport,
     createOrUpdateReport,
     downloadReport,
+    downloadIndividualReport,
     uploadProjectReportFile,
 } = require("../controllers/reportcontroller");
 
@@ -47,6 +48,18 @@ router.get(
     "/project/:projectId/download/:format",
     authenticate,
     downloadReport
+);
+
+// =========================================================
+// DOWNLOAD INDIVIDUAL MEMBER REPORT
+// GET /api/reports/user/:userId/download/pdf
+// GET /api/reports/user/:userId/download/word
+// =========================================================
+
+router.get(
+    "/user/:userId/download/:format",
+    authenticate,
+    downloadIndividualReport
 );
 
 // =========================================================

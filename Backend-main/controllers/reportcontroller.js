@@ -736,17 +736,23 @@ const downloadReport = async (req, res) => {
         // Role based project access
         const access = buildProjectAccess(user.role, user.id, 2);
 
-        // Get project + report
+        // Get project + optional saved report
         const result = await safeQuery(
             `
             SELECT
                 p.id AS project_id,
                 p.name AS project_name,
+                p.domain,
+                p.about_title,
+                p.about_description,
                 p.status,
                 p.priority,
                 p.start_date,
+                p.start_time,
                 p.deadline,
+                p.deadline_time,
                 p.progress,
+                prog.name AS program_name,
 
                 manager.full_name AS manager_name,
 
@@ -758,11 +764,14 @@ const downloadReport = async (req, res) => {
 
             FROM projects p
 
-            INNER JOIN project_reports r
+            LEFT JOIN project_reports r
                 ON r.project_id = p.id
 
+            LEFT JOIN programs prog
+                ON prog.id = p.program_id
+
             LEFT JOIN users manager
-                ON manager.id = p.project_manager_id
+                ON manager.id = COALESCE(p.project_manager_id, p.manager_id)
 
             WHERE p.id = $1
             ${access.sql}
@@ -773,22 +782,96 @@ const downloadReport = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: "Report not found or you do not have permission to access it",
+                message: "Project not found or you do not have permission to access it",
             });
         }
 
         const report = result.rows[0];
 
+        // Fetch all tasks for this project to include in the report
+        const tasksRes = await safeQuery(
+            `
+            SELECT
+                t.id,
+                t.name,
+                t.title,
+                t.description,
+                t.status,
+                t.priority,
+                t.start_date,
+                t.start_time,
+                t.due_date,
+                t.due_time,
+                u.full_name AS assignee_name
+            FROM tasks t
+            LEFT JOIN users u ON u.id = COALESCE(t.assignee_id, t.assigned_to)
+            WHERE t.project_id = $1
+            ORDER BY t.created_at DESC
+            `,
+            [projectId]
+        );
+
+        const projectTasks = tasksRes.rows;
+        const totalTasks = projectTasks.length;
+        const completedTasks = projectTasks.filter(t => t.status === "Completed" || t.status === "Done").length;
+        const inProgressTasks = projectTasks.filter(t => t.status === "In Progress").length;
+        const todoTasks = projectTasks.filter(t => !t.status || t.status === "To Do" || t.status === "Backlog").length;
+        const nowStr = new Date().toISOString().split("T")[0];
+        const overdueTasks = projectTasks.filter(
+            t => t.due_date && String(t.due_date).split("T")[0] < nowStr && t.status !== "Completed" && t.status !== "Done"
+        ).length;
+        const computedProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : (report.progress || 0);
+
+        const fmtDate = (d, tm) => {
+            if (!d) return "N/A";
+            const dStr = d instanceof Date ? d.toISOString().split("T")[0] : String(d).split("T")[0];
+            return tm ? `${dStr} at ${tm}` : dStr;
+        };
+
         // Clean values
         const projectName = report.project_name || "Project";
-        const reportTitle = report.title || "Project Report";
-        const reportContent = report.content || "No report content";
+        const programName = report.program_name || "General Portfolio";
+        const domainName = report.domain || "General";
+        const reportTitle = report.title || `${projectName} - Project Status Report`;
         const managerName = report.manager_name || "Unassigned";
-        const status = report.status || "N/A";
-        const priority = report.priority || "N/A";
-        const progress = report.progress || 0;
-        const startDate = report.start_date || "N/A";
-        const deadline = report.deadline || "N/A";
+        const status = totalTasks > 0 && completedTasks === totalTasks ? "Completed" : (report.status || "Active");
+        const priority = report.priority || "Medium";
+        const progress = computedProgress;
+        const startDate = fmtDate(report.start_date, report.start_time);
+        const deadline = fmtDate(report.deadline, report.deadline_time);
+
+        // Build comprehensive report content combining executive notes + task breakdown
+        const lines = [];
+        if (report.about_description) {
+            lines.push(`Project Overview: ${report.about_description}`);
+            lines.push("");
+        }
+        lines.push(`Task Summary: ${totalTasks} Total | ${completedTasks} Completed | ${inProgressTasks} In Progress | ${todoTasks} To Do | ${overdueTasks} Overdue`);
+        lines.push("");
+
+        if (report.content && report.content.trim()) {
+            lines.push("Executive Report Notes:");
+            lines.push(report.content.trim());
+            lines.push("");
+        }
+
+        lines.push("Task Breakdown:");
+        if (projectTasks.length === 0) {
+            lines.push("  - No tasks recorded for this project yet.");
+        } else {
+            projectTasks.forEach((t, idx) => {
+                const tName = t.name || t.title || "Untitled Task";
+                const tStatus = t.status === "Done" ? "Completed" : (t.status || "To Do");
+                const tAssignee = t.assignee_name || "Unassigned";
+                const tStart = fmtDate(t.start_date, t.start_time);
+                const tDue = fmtDate(t.due_date, t.due_time);
+                lines.push(`  ${idx + 1}. ${tName}`);
+                lines.push(`     Assigned to: ${tAssignee} | Status: ${tStatus} | Priority: ${t.priority || "Medium"}`);
+                lines.push(`     Start: ${tStart} | Due: ${tDue}`);
+            });
+        }
+
+        const reportContent = lines.join("\n");
 
         const safeProjectName = projectName
             .toString()
@@ -797,31 +880,21 @@ const downloadReport = async (req, res) => {
 
         // PDF Download
         if (requestedFormat === "PDF") {
-            const regularFont = path.join(__dirname, "../fonts/DejaVuSans.ttf");
-            const boldFont = path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf");
-
-            if (!fs.existsSync(regularFont)) {
-                console.error("PDF regular font not found:", regularFont);
-                return res.status(500).json({
-                    success: false,
-                    message: "PDF font file is missing on the server",
-                });
-            }
-
-            if (!fs.existsSync(boldFont)) {
-                console.error("PDF bold font not found:", boldFont);
-                return res.status(500).json({
-                    success: false,
-                    message: "PDF bold font file is missing on the server",
-                });
-            }
+            const regularFontPath = path.join(__dirname, "../fonts/DejaVuSans.ttf");
+            const boldFontPath = path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf");
 
             const doc = new PDFDocument({ margin: 50, size: "A4" });
 
-            doc.registerFont("ReportRegular", regularFont);
-            doc.registerFont("ReportBold", boldFont);
+            let regFont = "Helvetica";
+            let bldFont = "Helvetica-Bold";
+            if (fs.existsSync(regularFontPath) && fs.existsSync(boldFontPath)) {
+                doc.registerFont("ReportRegular", regularFontPath);
+                doc.registerFont("ReportBold", boldFontPath);
+                regFont = "ReportRegular";
+                bldFont = "ReportBold";
+            }
 
-            const filename = `${safeProjectName}_report.pdf`;
+            const filename = `${safeProjectName}_project_report.pdf`;
 
             res.setHeader("Content-Type", "application/pdf");
             res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -830,26 +903,32 @@ const downloadReport = async (req, res) => {
             doc.pipe(res);
 
             // Title
-            doc.font("ReportBold").fontSize(22).text(reportTitle, { align: "left" });
-            doc.moveDown();
+            doc.font(bldFont).fontSize(20).text(reportTitle, { align: "left" });
+            doc.moveDown(0.5);
+            doc.font(regFont).fontSize(10).fillColor("#555555").text(`Generated on ${new Date().toLocaleString()}`);
+            doc.fillColor("#000000").moveDown();
 
             // Project Information
-            doc.font("ReportRegular").fontSize(11);
+            doc.font(bldFont).fontSize(13).text("Project Summary");
+            doc.moveDown(0.3);
+            doc.font(regFont).fontSize(11);
             doc.text(`Project: ${projectName}`);
-            doc.text(`Project Manager: ${managerName}`);
+            doc.text(`Program: ${programName}`);
+            doc.text(`Domain: ${domainName}`);
+            doc.text(`Assigned to (Lead): ${managerName}`);
             doc.text(`Status: ${status}`);
             doc.text(`Priority: ${priority}`);
-            doc.text(`Progress: ${progress}%`);
+            doc.text(`Completion Progress: ${progress}% (${completedTasks}/${totalTasks} tasks)`);
             doc.text(`Start Date: ${startDate}`);
             doc.text(`Deadline: ${deadline}`);
             doc.moveDown();
 
             // Report Heading
-            doc.font("ReportBold").fontSize(14).text("Report");
-            doc.moveDown();
+            doc.font(bldFont).fontSize(13).text("Execution & Tasks Report");
+            doc.moveDown(0.4);
 
             // Report Content
-            doc.font("ReportRegular").fontSize(11).text(reportContent, {
+            doc.font(regFont).fontSize(10.5).text(reportContent, {
                 lineGap: 4,
                 width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
                 align: "left",
@@ -863,15 +942,17 @@ const downloadReport = async (req, res) => {
         if (requestedFormat === "Word") {
             const children = [
                 new Paragraph({ text: reportTitle, heading: HeadingLevel.TITLE }),
+                new Paragraph({ children: [new TextRun({ text: "Program: ", bold: true }), new TextRun(programName)] }),
                 new Paragraph({ children: [new TextRun({ text: "Project: ", bold: true }), new TextRun(projectName)] }),
-                new Paragraph({ children: [new TextRun({ text: "Project Manager: ", bold: true }), new TextRun(managerName)] }),
+                new Paragraph({ children: [new TextRun({ text: "Domain: ", bold: true }), new TextRun(domainName)] }),
+                new Paragraph({ children: [new TextRun({ text: "Assigned to (Lead): ", bold: true }), new TextRun(managerName)] }),
                 new Paragraph({ children: [new TextRun({ text: "Status: ", bold: true }), new TextRun(status)] }),
                 new Paragraph({ children: [new TextRun({ text: "Priority: ", bold: true }), new TextRun(priority)] }),
-                new Paragraph({ children: [new TextRun({ text: "Progress: ", bold: true }), new TextRun(`${progress}%`)] }),
+                new Paragraph({ children: [new TextRun({ text: "Progress: ", bold: true }), new TextRun(`${progress}% (${completedTasks}/${totalTasks} tasks)`)] }),
                 new Paragraph({ children: [new TextRun({ text: "Start Date: ", bold: true }), new TextRun(String(startDate))] }),
                 new Paragraph({ children: [new TextRun({ text: "Deadline: ", bold: true }), new TextRun(String(deadline))] }),
                 new Paragraph({ text: "" }),
-                new Paragraph({ text: "Report", heading: HeadingLevel.HEADING_1 }),
+                new Paragraph({ text: "Execution & Tasks Report", heading: HeadingLevel.HEADING_1 }),
             ];
 
             const contentLines = String(reportContent).split(/\r?\n/);
@@ -881,7 +962,7 @@ const downloadReport = async (req, res) => {
 
             const document = new Document({ sections: [{ children }] });
             const buffer = await Packer.toBuffer(document);
-            const filename = `${safeProjectName}_report.docx`;
+            const filename = `${safeProjectName}_project_report.docx`;
 
             res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
             res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -907,11 +988,214 @@ const downloadReport = async (req, res) => {
     }
 };
 
+/* =========================================================
+   DOWNLOAD INDIVIDUAL MEMBER REPORT (PDF / WORD)
+   GET /api/reports/user/:userId/download/:format
+========================================================= */
+
+const downloadIndividualReport = async (req, res) => {
+    try {
+        const { userId, format } = req.params;
+        const requestedFormat = format === "pdf" ? "PDF" : format === "word" ? "Word" : null;
+
+        if (!requestedFormat) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid report format. Use 'pdf' or 'word'.",
+            });
+        }
+
+        const userRes = await safeQuery(
+            `SELECT id, full_name, email, role, job_title, remarks, is_active, created_at FROM users WHERE id = $1`,
+            [userId]
+        );
+
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Member not found.",
+            });
+        }
+
+        const member = userRes.rows[0];
+
+        const tasksRes = await safeQuery(
+            `
+            SELECT
+                t.id,
+                t.name,
+                t.title,
+                t.status,
+                t.priority,
+                t.start_date,
+                t.start_time,
+                t.due_date,
+                t.due_time,
+                p.name AS project_name
+            FROM tasks t
+            LEFT JOIN projects p ON p.id = t.project_id
+            WHERE t.assignee_id = $1 OR t.assigned_to = $1
+            ORDER BY t.created_at DESC
+            `,
+            [userId]
+        );
+
+        const updatesRes = await safeQuery(
+            `
+            SELECT date, content, created_at, edited_at
+            FROM daily_updates
+            WHERE user_id = $1
+            ORDER BY date DESC, created_at DESC
+            LIMIT 15
+            `,
+            [userId]
+        ).catch(() => ({ rows: [] }));
+
+        const tasks = tasksRes.rows;
+        const dailyUpdates = updatesRes.rows;
+        const total = tasks.length;
+        const completed = tasks.filter(t => t.status === "Completed" || t.status === "Done").length;
+        const inProgress = tasks.filter(t => t.status === "In Progress").length;
+        const todo = tasks.filter(t => !t.status || t.status === "To Do" || t.status === "Backlog").length;
+        const nowStr = new Date().toISOString().split("T")[0];
+        const overdue = tasks.filter(
+            t => t.due_date && String(t.due_date).split("T")[0] < nowStr && t.status !== "Completed" && t.status !== "Done"
+        ).length;
+
+        const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+        const onTimeRate = total > 0 ? Math.round(((total - overdue) / total) * 100) : 100;
+        const kpiScore = total > 0
+            ? Math.min(100, Math.round(completionRate * 0.65 + onTimeRate * 0.25 + Math.min(10, dailyUpdates.length * 2)))
+            : (dailyUpdates.length > 0 ? Math.min(100, 50 + dailyUpdates.length * 5) : 0);
+
+        const fmtDate = (d, tm) => {
+            if (!d) return "N/A";
+            const dStr = d instanceof Date ? d.toISOString().split("T")[0] : String(d).split("T")[0];
+            return tm ? `${dStr} at ${tm}` : dStr;
+        };
+
+        const lines = [];
+        lines.push(`KPI Score: ${kpiScore} / 100`);
+        lines.push(`Task Completion Rate: ${completionRate}% (${completed} of ${total} tasks completed)`);
+        lines.push(`On-Time Delivery Rate: ${onTimeRate}% (${overdue} overdue)`);
+        lines.push(`Task Breakdown: ${total} Total | ${completed} Completed | ${inProgress} In Progress | ${todo} To Do | ${overdue} Overdue`);
+        lines.push(`Daily Updates Logged: ${dailyUpdates.length}`);
+        lines.push("");
+
+        if (member.remarks && member.remarks.trim()) {
+            lines.push(`Management Remarks: ${member.remarks.trim()}`);
+            lines.push("");
+        }
+
+        lines.push("Assigned Tasks:");
+        if (tasks.length === 0) {
+            lines.push("  - No tasks assigned to this member.");
+        } else {
+            tasks.forEach((t, idx) => {
+                const tName = t.name || t.title || "Untitled Task";
+                const tStatus = t.status === "Done" ? "Completed" : (t.status || "To Do");
+                const tProj = t.project_name || "Standalone / Program Task";
+                lines.push(`  ${idx + 1}. ${tName} [${tProj}]`);
+                lines.push(`     Status: ${tStatus} | Priority: ${t.priority || "Medium"} | Start: ${fmtDate(t.start_date, t.start_time)} | Due: ${fmtDate(t.due_date, t.due_time)}`);
+            });
+        }
+
+        lines.push("");
+        lines.push("Recent Daily Updates:");
+        if (dailyUpdates.length === 0) {
+            lines.push("  - No daily updates logged.");
+        } else {
+            dailyUpdates.forEach((du, idx) => {
+                const dStr = du.date instanceof Date ? du.date.toISOString().split("T")[0] : String(du.date).split("T")[0];
+                const editTag = du.edited_at ? " (Edited)" : "";
+                lines.push(`  ${idx + 1}. [${dStr}${editTag}] ${String(du.content || "").replace(/\r?\n/g, " ")}`);
+            });
+        }
+
+        const reportBody = lines.join("\n");
+        const safeUserName = (member.full_name || "member").toString().replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+        const reportTitle = `${member.full_name} - Individual KPI & Performance Report`;
+
+        if (requestedFormat === "PDF") {
+            const doc = new PDFDocument({ margin: 50, size: "A4" });
+            const filename = `${safeUserName}_individual_report.pdf`;
+
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+            res.setHeader("Cache-Control", "no-store");
+
+            doc.pipe(res);
+
+            doc.font("Helvetica-Bold").fontSize(19).text(reportTitle, { align: "left" });
+            doc.moveDown(0.4);
+            doc.font("Helvetica").fontSize(10).fillColor("#555555").text(`Generated on ${new Date().toLocaleString()}`);
+            doc.fillColor("#000000").moveDown();
+
+            doc.font("Helvetica-Bold").fontSize(13).text("Member Profile");
+            doc.moveDown(0.3);
+            doc.font("Helvetica").fontSize(11);
+            doc.text(`Full Name: ${member.full_name}`);
+            doc.text(`Role: ${member.role}`);
+            doc.text(`Job Title: ${member.job_title || "Specialist"}`);
+            doc.text(`Email: ${member.email}`);
+            doc.text(`Status: ${member.is_active ? "Active" : "Inactive"}`);
+            doc.moveDown();
+
+            doc.font("Helvetica-Bold").fontSize(13).text("Performance & KPI Breakdown");
+            doc.moveDown(0.4);
+            doc.font("Helvetica").fontSize(10.5).text(reportBody, {
+                lineGap: 4,
+                width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+                align: "left",
+            });
+
+            doc.end();
+            return;
+        }
+
+        if (requestedFormat === "Word") {
+            const children = [
+                new Paragraph({ text: reportTitle, heading: HeadingLevel.TITLE }),
+                new Paragraph({ children: [new TextRun({ text: "Full Name: ", bold: true }), new TextRun(member.full_name)] }),
+                new Paragraph({ children: [new TextRun({ text: "Role: ", bold: true }), new TextRun(member.role)] }),
+                new Paragraph({ children: [new TextRun({ text: "Job Title: ", bold: true }), new TextRun(member.job_title || "Specialist")] }),
+                new Paragraph({ children: [new TextRun({ text: "Email: ", bold: true }), new TextRun(member.email)] }),
+                new Paragraph({ children: [new TextRun({ text: "KPI Score: ", bold: true }), new TextRun(`${kpiScore} / 100`)] }),
+                new Paragraph({ text: "" }),
+                new Paragraph({ text: "Performance & Task Breakdown", heading: HeadingLevel.HEADING_1 }),
+            ];
+
+            reportBody.split(/\r?\n/).forEach(line => {
+                children.push(new Paragraph({ children: [new TextRun(line)] }));
+            });
+
+            const document = new Document({ sections: [{ children }] });
+            const buffer = await Packer.toBuffer(document);
+            const filename = `${safeUserName}_individual_report.docx`;
+
+            res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+            res.setHeader("Content-Length", buffer.length);
+            res.setHeader("Cache-Control", "no-store");
+
+            return res.end(buffer);
+        }
+    } catch (error) {
+        console.error("❌ downloadIndividualReport error:", error);
+        if (res.headersSent) return res.end();
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to download individual report",
+        });
+    }
+};
+
 module.exports = {
     getReportOverview,
     getProjectReport,
     createOrUpdateReport,
     downloadReport,
+    downloadIndividualReport,
     uploadProjectReportFile,
     reportUpload,
 };

@@ -114,7 +114,7 @@ export default function Projects() {
   const [previewProject, setPreviewProject] = useState<{ id: string; name: string; domain?: string } | null>(null);
   const [form, setForm] = useState({
     name: "", domain: "", aboutTitle: "", aboutDescription: "",
-    startDate: "", startTime: "09:00", deadline: "", deadlineTime: "17:00", priority: "Medium", programId: "",
+    startDate: "", startTime: "09:00", deadline: "", deadlineTime: "17:00", priority: "Medium", programId: "", assignedTo: "",
   });
 
   // Sync default programId in form when selectedProgram changes
@@ -224,7 +224,7 @@ export default function Projects() {
       setForm({
         name: "", domain: "", aboutTitle: "", aboutDescription: "",
         startDate: "", startTime: "09:00", deadline: "", deadlineTime: "17:00", priority: "Medium",
-        programId: selectedProgram?.id || "",
+        programId: selectedProgram?.id || "", assignedTo: "",
       });
       fetchProjects();
     } catch (err: any) { setError(err.message); }
@@ -610,6 +610,23 @@ export default function Projects() {
                   <p className="text-[10px] text-gray-400 mt-1.5">Cover style is generated dynamically from your project theme and initials.</p>
                 </div>
               )}
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5">Assigned to *</label>
+                <select
+                  required
+                  value={form.assignedTo}
+                  onChange={e => setForm({ ...form, assignedTo: e.target.value })}
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white"
+                >
+                  <option value="">Select member...</option>
+                  {availableMembers.map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.full_name} ({m.role || m.system_role || "Member"})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>

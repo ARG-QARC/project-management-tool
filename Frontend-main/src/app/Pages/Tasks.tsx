@@ -476,6 +476,10 @@ export default function Tasks() {
       setCreateError("Task title is required");
       return;
     }
+    if (!taskForm.assigneeId) {
+      setCreateError("'Assigned to' is compulsory. Please select a team member.");
+      return;
+    }
     if (!taskForm.startDate || !taskForm.startTime || !taskForm.dueDate || !taskForm.dueTime) {
       setCreateError("Start date, start time, due date, and due time are compulsory.");
       return;
@@ -1072,7 +1076,7 @@ export default function Tasks() {
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Priority</th>
                   <th className="py-3 px-4">Project</th>
-                  <th className="py-3 px-4">Member</th>
+                  <th className="py-3 px-4">Assigned to</th>
                   <th className="py-3 px-4">Due Date</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
@@ -1263,7 +1267,7 @@ export default function Tasks() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Member</span>
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assigned to</span>
                         {isManager && (
                           <span className="text-[10px] font-semibold text-indigo-600">Change</span>
                         )}
@@ -1669,14 +1673,15 @@ export default function Tasks() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                    Assignee
+                    Assigned to *
                   </label>
                   <select
+                    required
                     value={taskForm.assigneeId}
                     onChange={e => setTaskForm({ ...taskForm, assigneeId: e.target.value })}
                     className="w-full text-sm border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
                   >
-                    <option value="">Unassigned</option>
+                    <option value="">Select member...</option>
                     {members.map(m => (
                       <option key={m.id} value={m.id}>
                         {m.full_name}{m.role ? ` (${m.role})` : ""}

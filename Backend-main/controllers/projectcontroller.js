@@ -208,7 +208,11 @@ const createProject = async (req, res) => {
             priority,
             status,
             programId,
-            program_id
+            program_id,
+            assignedTo,
+            assigned_to,
+            assigneeId,
+            managerId
         } = req.body;
         
         const finalStartDate = startDate || start_date;
@@ -217,8 +221,9 @@ const createProject = async (req, res) => {
         const finalAboutTitle = aboutTitle || about_title;
         const finalAboutDescription = aboutDescription || about_description;
         const finalProgramId = programId || program_id;
+        const finalAssignedTo = assignedTo || assigned_to || assigneeId || managerId || null;
 
-        console.log('🔍 Creating project:', { name, domain, priority, user: req.user?.id });
+        console.log('🔍 Creating project:', { name, domain, priority, assignedTo: finalAssignedTo, user: req.user?.id });
 
         if (!name || !name.trim()) {
             return res.status(400).json({
@@ -243,10 +248,12 @@ const createProject = async (req, res) => {
                 deadline_time,
                 priority,
                 program_id,
+                manager_id,
+                project_manager_id,
                 created_by
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
             )
             RETURNING *
             `,
@@ -262,6 +269,8 @@ const createProject = async (req, res) => {
                 finalDeadlineTime,
                 priority || "Medium",
                 finalProgramId || null,
+                finalAssignedTo,
+                finalAssignedTo,
                 req.user.id
             ]
         );
@@ -286,7 +295,8 @@ const createProject = async (req, res) => {
                         start_time = EXCLUDED.start_time,
                         deadline = EXCLUDED.deadline,
                         deadline_time = EXCLUDED.deadline_time,
-                        priority = EXCLUDED.priority
+                        priority = EXCLUDED.priority,
+                        assigned_to = EXCLUDED.assigned_to
                     `,
                     [
                         projectId,
@@ -300,7 +310,7 @@ const createProject = async (req, res) => {
                         deadline || null,
                         finalDeadlineTime,
                         priority || "Medium",
-                        req.user.id,
+                        finalAssignedTo || req.user.id,
                         "In Progress",
                         req.user.id
                     ]
@@ -310,13 +320,20 @@ const createProject = async (req, res) => {
             }
         }
 
-        // Also add creator to project_members
+        // Also add creator & assignee to project_members
         try {
             const memberId = `pm-${Date.now()}`;
             await safeQuery(
                 `INSERT INTO project_members (id, project_id, user_id, role) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
                 [memberId, projectId, req.user.id, req.user.role || 'Project Manager']
             );
+            if (finalAssignedTo && finalAssignedTo !== req.user.id) {
+                const assigneeMemberId = `pm-${Date.now()}-lead`;
+                await safeQuery(
+                    `INSERT INTO project_members (id, project_id, user_id, role) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+                    [assigneeMemberId, projectId, finalAssignedTo, 'Lead Contributor']
+                );
+            }
         } catch (e) {
             console.warn("Could not insert creator to project_members:", e.message);
         }

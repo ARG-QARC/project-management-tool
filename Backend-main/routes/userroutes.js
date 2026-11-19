@@ -25,7 +25,6 @@ const requireSystemAdministrator = require("../middleware/adminMiddleware");
 router.get(
   "/",
   authenticate,
-  requireSystemAdministrator,
   getUsers
 );
 

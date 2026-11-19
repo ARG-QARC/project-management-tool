@@ -48,29 +48,86 @@ const ALLOWED_ROLES = [
 
 const getUsers = async (req, res) => {
   try {
-    console.log('🔍 Fetching all users for user:', req.user?.id);
+    console.log('🔍 Fetching all users with KPI metrics for user:', req.user?.id);
 
     const result = await safeQuery(`
       SELECT
-        id,
-        email,
-        full_name,
-        role,
-        is_active,
-        last_login_at,
-        created_at,
-        updated_at,
-        job_title,
-        remarks
-      FROM users
-      ORDER BY created_at DESC
+        u.id,
+        u.email,
+        u.full_name,
+        u.role,
+        u.is_active,
+        u.last_login_at,
+        u.created_at,
+        u.updated_at,
+        u.job_title,
+        u.remarks,
+        COALESCE(ts.total_tasks, 0)::int AS total_tasks,
+        COALESCE(ts.completed_tasks, 0)::int AS completed_tasks,
+        COALESCE(ts.in_progress_tasks, 0)::int AS in_progress_tasks,
+        COALESCE(ts.todo_tasks, 0)::int AS todo_tasks,
+        COALESCE(ts.overdue_tasks, 0)::int AS overdue_tasks,
+        COALESCE(du.daily_updates_count, 0)::int AS daily_updates_count
+      FROM users u
+      LEFT JOIN (
+        SELECT
+          COALESCE(assignee_id, assigned_to) AS uid,
+          COUNT(*)::int AS total_tasks,
+          COUNT(*) FILTER (WHERE status IN ('Completed', 'Done'))::int AS completed_tasks,
+          COUNT(*) FILTER (WHERE status = 'In Progress')::int AS in_progress_tasks,
+          COUNT(*) FILTER (WHERE status IN ('To Do', 'Backlog') OR status IS NULL)::int AS todo_tasks,
+          COUNT(*) FILTER (WHERE due_date IS NOT NULL AND due_date < CURRENT_DATE AND status NOT IN ('Completed', 'Done'))::int AS overdue_tasks
+        FROM tasks
+        WHERE COALESCE(assignee_id, assigned_to) IS NOT NULL
+        GROUP BY COALESCE(assignee_id, assigned_to)
+      ) ts ON ts.uid = u.id
+      LEFT JOIN (
+        SELECT user_id, COUNT(*)::int AS daily_updates_count
+        FROM daily_updates
+        GROUP BY user_id
+      ) du ON du.user_id = u.id
+      ORDER BY u.created_at DESC
     `);
 
-    console.log(`✅ Found ${result.rows.length} users`);
+    const usersWithKpi = result.rows.map(u => {
+      const total = u.total_tasks || 0;
+      const completed = u.completed_tasks || 0;
+      const inProgress = u.in_progress_tasks || 0;
+      const todo = u.todo_tasks || 0;
+      const overdue = u.overdue_tasks || 0;
+      const updatesCount = u.daily_updates_count || 0;
+
+      const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+      const onTimeRate = total > 0 ? Math.round(((total - overdue) / total) * 100) : 100;
+      const activityBonus = Math.min(10, updatesCount * 2);
+      const kpiScore = total > 0
+        ? Math.min(100, Math.round(completionRate * 0.65 + onTimeRate * 0.25 + activityBonus))
+        : (updatesCount > 0 ? Math.min(100, 50 + updatesCount * 5) : 0);
+
+      return {
+        ...u,
+        completion_rate: completionRate,
+        on_time_rate: onTimeRate,
+        kpi_score: kpiScore,
+        taskStats: {
+          total,
+          completed,
+          in_progress: inProgress,
+          to_do: todo,
+          overdue,
+          completion_rate: completionRate,
+          on_time_rate: onTimeRate,
+          daily_updates_count: updatesCount,
+          kpi_score: kpiScore,
+        }
+      };
+    });
+
+    console.log(`✅ Found ${usersWithKpi.length} users with KPIs`);
 
     return res.status(200).json({
       success: true,
-      users: result.rows,
+      users: usersWithKpi,
     });
 
   } catch (error) {
@@ -164,12 +221,36 @@ const getUserById = async (req, res) => {
       [id]
     );
 
+    const updatesRes = await safeQuery(
+      `SELECT COUNT(*)::int AS daily_updates_count FROM daily_updates WHERE user_id = $1`,
+      [id]
+    ).catch(() => ({ rows: [{ daily_updates_count: 0 }] }));
+
     const tasks = tasksRes.rows;
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.status === 'Completed' || t.status === 'Done').length;
+    const inProgress = tasks.filter(t => t.status === 'In Progress').length;
+    const todo = tasks.filter(t => t.status === 'To Do' || t.status === 'Backlog').length;
+    const nowStr = new Date().toISOString().split("T")[0];
+    const overdue = tasks.filter(t => t.due_date && String(t.due_date).split("T")[0] < nowStr && t.status !== 'Completed' && t.status !== 'Done').length;
+    const updatesCount = updatesRes.rows[0]?.daily_updates_count || 0;
+
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const onTimeRate = total > 0 ? Math.round(((total - overdue) / total) * 100) : 100;
+    const kpiScore = total > 0
+      ? Math.min(100, Math.round(completionRate * 0.65 + onTimeRate * 0.25 + Math.min(10, updatesCount * 2)))
+      : (updatesCount > 0 ? Math.min(100, 50 + updatesCount * 5) : 0);
+
     const taskStats = {
-      total: tasks.length,
-      completed: tasks.filter(t => t.status === 'Completed' || t.status === 'Done').length,
-      in_progress: tasks.filter(t => t.status === 'In Progress').length,
-      to_do: tasks.filter(t => t.status === 'To Do' || t.status === 'Backlog').length,
+      total,
+      completed,
+      in_progress: inProgress,
+      to_do: todo,
+      overdue,
+      completion_rate: completionRate,
+      on_time_rate: onTimeRate,
+      daily_updates_count: updatesCount,
+      kpi_score: kpiScore,
     };
 
     console.log('? User profile fetched:', id, { projects: projectsRes.rows.length, tasks: tasks.length });
@@ -181,6 +262,9 @@ const getUserById = async (req, res) => {
         projects: projectsRes.rows,
         tasks: tasks,
         taskStats,
+        kpi_score: kpiScore,
+        completion_rate: completionRate,
+        on_time_rate: onTimeRate,
       },
     });
 
